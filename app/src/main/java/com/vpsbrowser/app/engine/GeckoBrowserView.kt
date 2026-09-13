@@ -39,7 +39,6 @@ fun GeckoBrowserView(
         GeckoSession().apply {
             settings.apply {
                 useTrackingProtection = true
-                fullScreenMode = true
                 viewportMode = GeckoSessionSettings.VIEWPORT_MODE_DESKTOP
                 userAgentMode = GeckoSessionSettings.USER_AGENT_MODE_DESKTOP
                 allowJavascript = true
@@ -135,7 +134,11 @@ fun GeckoBrowserView(
     // Configure GeckoSession delegates
     DisposableEffect(session) {
         session.navigationDelegate = object : GeckoSession.NavigationDelegate {
-            override fun onLocationChange(session: GeckoSession, newUrl: String?) {
+            override fun onLocationChange(
+                session: GeckoSession,
+                newUrl: String?,
+                perms: List<GeckoSession.PermissionDelegate.ContentPermission>
+            ) {
                 newUrl?.let {
                     currentUrl = it
                     onUrlChanged(it)
@@ -170,7 +173,7 @@ fun GeckoBrowserView(
             override fun onAuthPrompt(
                 session: GeckoSession,
                 prompt: GeckoSession.PromptDelegate.AuthPrompt
-            ): GeckoResult<GeckoSession.PromptDelegate.AuthResponse>? {
+            ): GeckoResult<GeckoSession.PromptDelegate.PromptResponse>? {
                 val user = profile.browserUser.ifBlank { "admin" }
                 val pass = profile.browserPassword
                 if (pass.isNotBlank()) {
