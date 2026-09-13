@@ -24,24 +24,30 @@ De esta forma:
 
 ---
 
-## 🚀 Despliegue del Servidor en tu VPS
+## 🚀 Despliegue del Servidor en tu VPS (1 Solo Comando)
 
-En tu servidor VPS (Ubuntu, Debian o CentOS), clona el repositorio o copia la carpeta `server/` y ejecuta:
+Puedes instalarlo en **cualquier VPS** (Ubuntu, Debian, CentOS, AlmaLinux, Rocky Linux, Oracle Cloud ARM/AMD, Amazon Linux, etc.) con una sola línea:
 
 ```bash
-cd server
+curl -fsSL https://raw.githubusercontent.com/anhot11/VpsBrowser/main/server/deploy.sh | sudo bash
+```
+
+### 🧠 ¿Qué hace el instalador de forma automática?
+1. **Detecta el Sistema Operativo y la Arquitectura:** Compatible con Intel/AMD (`x86_64`) y ARM64 (`aarch64` como Oracle Cloud Ampere o AWS Graviton).
+2. **Instala dependencias base:** Detecta si tu VPS usa `apt`, `dnf`, `yum`, `pacman`, `apk` o `zypper` e instala las utilidades necesarias (`curl`, `wget`, `openssl`).
+3. **Optimización de Memoria (RAM y SWAP):** Si tu VPS tiene menos de 2GB de RAM, crea y activa automáticamente un archivo **SWAP de 2GB** para evitar cierres o falta de memoria (OOM).
+4. **Instalación y arranque de Docker:** Si Docker o Docker Compose no están instalados, los descarga, configura y arranca el servicio.
+5. **Apertura de Puertos en el Cortafuegos (Firewall):** Abre automáticamente los puertos `3000` (HTTP) y `3001` (HTTPS) en `ufw`, `firewalld` o `iptables`.
+6. **Generación de credenciales seguras y despliegue:** Genera una clave aleatoria y arranca **Firefox (`lscr.io/linuxserver/firefox:latest`)** en segundo plano.
+
+---
+
+*(Opcional: Si prefieres clonar el repositorio manualmente:)*
+```bash
+git clone https://github.com/anhot11/VpsBrowser.git
+cd VpsBrowser/server
 sudo ./deploy.sh
 ```
-
-El script instalará Docker automáticamente (si no lo tienes), generará una contraseña segura y levantará el contenedor de **Firefox (`linuxserver/firefox`)** en el puerto **3000** (HTTP) y **3001** (HTTPS).
-
-O si prefieres usar Docker Compose manualmente:
-```bash
-cd server
-docker compose up -d
-```
-
-*(Opcional: Si prefieres Chromium en lugar de Firefox, puedes usar `docker compose -f docker-compose.chromium.yml up -d`)*.
 
 ---
 
