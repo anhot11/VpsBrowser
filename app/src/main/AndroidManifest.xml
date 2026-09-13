@@ -38,6 +38,13 @@
             android:label="@string/title_settings"
             android:parentActivityName=".MainActivity" />
 
+        <activity
+            android:name=".AutoDeployActivity"
+            android:exported="false"
+            android:label="@string/title_auto_deploy"
+            android:parentActivityName=".MainActivity" />
+
     </application>
+
 
 </manifest>

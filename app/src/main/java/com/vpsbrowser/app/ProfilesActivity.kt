@@ -58,7 +58,16 @@ class ProfilesActivity : AppCompatActivity() {
                     .show()
             }
         )
-        binding.rvProfiles.adapter = adapter
+        val autoDeployLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == Activity.RESULT_OK) {
+                setResult(Activity.RESULT_OK)
+                finish()
+            }
+        }
+
+        binding.btnAutoDeploy.setOnClickListener {
+            autoDeployLauncher.launch(android.content.Intent(this, AutoDeployActivity::class.java))
+        }
 
         binding.fabAddProfile.setOnClickListener {
             showProfileDialog(null)
@@ -66,6 +75,7 @@ class ProfilesActivity : AppCompatActivity() {
 
         updateEmptyState()
     }
+
 
     private fun refreshList() {
         adapter.update(profileManager.getAllProfiles(), profileManager.getActiveProfileId())

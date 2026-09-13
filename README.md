@@ -13,6 +13,7 @@ De esta forma:
 
 ## 📱 Características de la App Android
 
+- **⚡ Auto-Instalador en 1 Toque desde la App**: ¡No necesitas abrir ninguna terminal! Introduces la IP y contraseña SSH de tu VPS en la app, y la APK instala Docker, optimiza la memoria RAM con SWAP, abre los puertos y levanta Firefox automáticamente con terminal en vivo en la pantalla de tu celular.
 - **Perfiles de Servidores VPS**: Guarda múltiples servidores VPS y conéctate con un solo toque.
 - **Barra de navegación (Omnibox)**: Escribe cualquier URL o término de búsqueda directamente.
 - **Modo Táctil vs Modo Ratón**:
@@ -21,6 +22,7 @@ De esta forma:
 - **Barra de Teclas de Escritorio**: Teclas rápidas `Esc`, `Tab`, `Ctrl`, `Alt`, `Enter` y `F12`.
 - **Modo Pantalla Completa Inmersiva**: Oculta barras de herramientas para aprovechar el 100% de la pantalla del móvil.
 - **Indicador de Estado y Ping**: Consulta en tiempo real la latencia a tu VPS en milisegundos.
+
 
 ---
 

@@ -214,14 +214,17 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
 
+        binding.btnAutoDeployAction.setOnClickListener {
+            val intent = Intent(this, AutoDeployActivity::class.java)
+            profilesLauncher.launch(intent)
+        }
+
         binding.btnConnectAction.setOnClickListener {
-            if (activeProfile == null) {
-                profilesLauncher.launch(Intent(this, ProfilesActivity::class.java))
-            } else {
-                connectToProfile(activeProfile!!)
-            }
+            val intent = Intent(this, ProfilesActivity::class.java)
+            profilesLauncher.launch(intent)
         }
     }
+
 
     private fun setupVirtualMouse() {
         binding.virtualMouseOverlay.setOnTouchListener { _, event ->
@@ -380,7 +383,11 @@ class MainActivity : AppCompatActivity() {
     private fun showNoProfileState() {
         binding.connectionOverlay.visibility = View.VISIBLE
         binding.tvStatusMessage.text = getString(R.string.status_no_profile)
-        binding.btnConnectAction.text = getString(R.string.btn_add_server)
+        binding.btnAutoDeployAction.visibility = View.VISIBLE
+        binding.btnConnectAction.text = "Añadir Servidor Manualmente"
+        binding.btnConnectAction.setOnClickListener {
+            profilesLauncher.launch(Intent(this, ProfilesActivity::class.java))
+        }
         binding.statusIndicatorDot.setBackgroundColor(ContextCompat.getColor(this, R.color.status_disconnected))
         binding.tvPing.text = "Sin VPS"
     }
@@ -388,10 +395,17 @@ class MainActivity : AppCompatActivity() {
     private fun showConnectionError(message: String) {
         binding.connectionOverlay.visibility = View.VISIBLE
         binding.tvStatusMessage.text = message
+        binding.btnAutoDeployAction.visibility = View.GONE
         binding.btnConnectAction.text = getString(R.string.action_reconnect)
+        binding.btnConnectAction.setOnClickListener {
+            activeProfile?.let { connectToProfile(it) } ?: run {
+                profilesLauncher.launch(Intent(this, ProfilesActivity::class.java))
+            }
+        }
         binding.statusIndicatorDot.setBackgroundColor(ContextCompat.getColor(this, R.color.status_disconnected))
         binding.tvPing.text = "Error"
     }
+
 
     private fun updateStatus(isConnected: Boolean, latency: Long?) {
         if (isConnected) {

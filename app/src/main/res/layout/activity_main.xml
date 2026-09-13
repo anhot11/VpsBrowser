@@ -131,14 +131,29 @@
                 android:textSize="16sp"
                 android:textAlignment="center" />
 
-            <Button
-                android:id="@+id/btnConnectAction"
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnAutoDeployAction"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:text="@string/btn_connect"
-                android:backgroundTint="@color/primary" />
+                android:layout_marginTop="20dp"
+                android:text="@string/btn_auto_deploy"
+                android:textColor="@color/on_primary"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                app:icon="@drawable/ic_auto_fix"
+                app:iconTint="@color/on_primary"
+                app:backgroundTint="@color/primary" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnConnectAction"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="Añadir Servidor Manualmente"
+                android:textSize="13sp" />
         </LinearLayout>
+
 
         <!-- Latency & Status Pill Overlay -->
         <LinearLayout

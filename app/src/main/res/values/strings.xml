@@ -39,4 +39,19 @@
     <string name="pref_default_search">Motor de búsqueda</string>
     <string name="pref_resolution">Resolución remota</string>
     <string name="pref_audio">Transmitir audio remoto</string>
+
+    <string name="title_auto_deploy">Instalador Automático VPS</string>
+    <string name="btn_auto_deploy">⚡ Auto-Instalar en mi VPS</string>
+    <string name="desc_auto_deploy">La app instalará todo en tu servidor por SSH sin que tengas que usar la terminal</string>
+    <string name="ssh_host_hint">Dirección IP de tu VPS</string>
+    <string name="ssh_user_hint">Usuario SSH (ej: root)</string>
+    <string name="ssh_port_hint">Puerto SSH (ej: 22)</string>
+    <string name="ssh_pass_hint">Contraseña SSH de tu VPS</string>
+    <string name="btn_start_install">🚀 Iniciar Instalación Automática</string>
+    <string name="status_connecting_ssh">Conectando con tu servidor por SSH...</string>
+    <string name="status_installing">Instalando y configurando navegador en tu VPS...</string>
+    <string name="status_success">¡Instalación completada exitosamente!</string>
+    <string name="btn_open_browser">🌐 Abrir Navegador Remoto</string>
+    <string name="toggle_logs">Ver terminal de instalación en vivo</string>
 </resources>
+

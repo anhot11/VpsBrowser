@@ -28,6 +28,19 @@
         android:padding="16dp"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnAutoDeploy"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:layout_marginBottom="16dp"
+            android:text="@string/btn_auto_deploy"
+            android:textColor="@color/on_primary"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            app:icon="@drawable/ic_auto_fix"
+            app:iconTint="@color/on_primary"
+            app:backgroundTint="@color/accent_blue" />
+
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -36,6 +49,7 @@
             android:textSize="14sp"
             android:textStyle="bold"
             android:layout_marginBottom="12dp" />
+
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvProfiles"
