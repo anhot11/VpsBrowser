@@ -11,6 +11,8 @@ data class VpsProfile(
     var sshPassword: String = "",
     var sshPrivateKey: String = "",
     var useSshTunnel: Boolean = true, // Zero open ports: traffic encrypted through SSH tunnel
+    var cloudflareUrl: String = "", // Free HTTPS Cloudflare Tunnel (trycloudflare.com)
+    var useCloudflareTunnel: Boolean = false, // Connect directly via Cloudflare Tunnel
     var browserPort: Int = 3000,
     var browserPassword: String = "",
     var browserEngine: String = "firefox",

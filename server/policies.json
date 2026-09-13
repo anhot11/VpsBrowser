@@ -30,7 +30,16 @@
       "browser.safebrowsing.phishing.enabled": true,
       "datareporting.healthreport.uploadEnabled": false,
       "toolkit.telemetry.unified": false,
-      "toolkit.telemetry.enabled": false
+      "toolkit.telemetry.enabled": false,
+      "browser.tabs.unloadOnLowMemory": true,
+      "browser.cache.memory.capacity": 32768,
+      "browser.cache.disk.capacity": 102400,
+      "dom.ipc.processCount": 2,
+      "media.autoplay.default": 5,
+      "browser.sessionstore.interval": 60000,
+      "image.mem.surfacecache.max_size_kb": 262144,
+      "accessibility.force_disabled": 1,
+      "browser.sessionhistory.max_entries": 15
     }
   }
 }

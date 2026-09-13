@@ -19,6 +19,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Lock
@@ -72,6 +79,7 @@ fun ServerManagerScreen(
     onBack: () -> Unit,
     onEnvironmentDestroyed: () -> Unit
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var metrics by remember { mutableStateOf<ServerMetrics?>(null) }
     var isLoadingMetrics by remember { mutableStateOf(true) }
@@ -143,6 +151,56 @@ fun ServerManagerScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            }
+
+            // Card: Cloudflare Tunnel
+            if (profile.cloudflareUrl.isNotBlank()) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, DarkBorder, RoundedCornerShape(16.dp))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Cloud, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Túnel Cloudflare HTTPS Activo", style = MaterialTheme.typography.titleMedium)
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Acceso seguro sin abrir puertos en tu VPS ni cortafuegos, enrutado mediante la red perimetral de Cloudflare.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = profile.cloudflareUrl,
+                                fontSize = 12.sp,
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1
+                            )
+                            IconButton(
+                                onClick = {
+                                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                    cm?.setPrimaryClip(ClipData.newPlainText("Cloudflare URL", profile.cloudflareUrl))
+                                    Toast.makeText(context, "URL de Cloudflare copiada", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(Icons.Default.ContentCopy, contentDescription = "Copiar", modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
                 }
             }
 

@@ -168,7 +168,12 @@ fun ProfilesScreen(
                             Icon(Icons.Default.Security, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = if (profile.useSshTunnel) "Túnel SSH Cifrado (Sin puertos abiertos)" else "Conexión Directa",
+                                text = if (profile.useCloudflareTunnel && profile.cloudflareUrl.isNotBlank())
+                                    "Túnel Cloudflare HTTPS"
+                                else if (profile.useSshTunnel)
+                                    "Túnel SSH Cifrado (Sin puertos)"
+                                else
+                                    "Conexión Directa",
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -196,6 +201,8 @@ fun ProfilesScreen(
         var sshUser by remember { mutableStateOf(target.sshUser) }
         var sshPort by remember { mutableStateOf(target.sshPort.toString()) }
         var sshPass by remember { mutableStateOf(target.sshPassword) }
+        var cloudflareUrl by remember { mutableStateOf(target.cloudflareUrl) }
+        var useCloudflare by remember { mutableStateOf(target.useCloudflareTunnel) }
         var browserPort by remember { mutableStateOf(target.browserPort.toString()) }
         var browserPass by remember { mutableStateOf(target.browserPassword) }
         var useTunnel by remember { mutableStateOf(target.useSshTunnel) }
@@ -215,6 +222,17 @@ fun ProfilesScreen(
                         OutlinedTextField(value = sshPort, onValueChange = { sshPort = it }, label = { Text("Puerto SSH") }, modifier = Modifier.width(100.dp), singleLine = true)
                     }
                     OutlinedTextField(value = sshPass, onValueChange = { sshPass = it }, label = { Text("Contraseña SSH") }, singleLine = true)
+                    OutlinedTextField(
+                        value = cloudflareUrl,
+                        onValueChange = { cloudflareUrl = it },
+                        label = { Text("URL Cloudflare Tunnel (Opcional)") },
+                        placeholder = { Text("https://xxx.trycloudflare.com") },
+                        singleLine = true
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Usar Cloudflare Tunnel (Sin abrir puertos)", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        Switch(checked = useCloudflare, onCheckedChange = { useCloudflare = it })
+                    }
                     OutlinedTextField(value = browserPort, onValueChange = { browserPort = it }, label = { Text("Puerto Navegador") }, singleLine = true)
                     OutlinedTextField(value = browserPass, onValueChange = { browserPass = it }, label = { Text("Contraseña Navegador") }, singleLine = true)
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -231,6 +249,8 @@ fun ProfilesScreen(
                         sshUser = sshUser.ifBlank { "root" },
                         sshPort = sshPort.toIntOrNull() ?: 22,
                         sshPassword = sshPass,
+                        cloudflareUrl = cloudflareUrl.trim(),
+                        useCloudflareTunnel = useCloudflare,
                         browserPort = browserPort.toIntOrNull() ?: 3000,
                         browserPassword = browserPass,
                         useSshTunnel = useTunnel

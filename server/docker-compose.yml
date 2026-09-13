@@ -13,6 +13,8 @@ services:
       # Authentication for accessing the remote Firefox browser
       - CUSTOM_USER=admin
       - PASSWORD=ChangeMeSecure123!
+      # Optimize video canvas framerate and compression for low CPU and mobile bandwidth
+      - KASM_VNC_ARGUMENTS=-framerate 30 -quality 7
     volumes:
       - ./config:/config
       - ./policies.json:/usr/lib/firefox/distribution/policies.json:ro
@@ -21,7 +23,13 @@ services:
       # Port 3000 for KasmVNC Web GUI (Direct & SSH Tunnel)
       - "3000:3000"
       - "3001:3001"
-    shm_size: "2gb" # Firefox shared memory for rendering and media
-
+    shm_size: "1gb" # Balanced shared memory for rendering and low RAM VPS
     restart: unless-stopped
 
+  vps-tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: vps-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://vps-firefox:3000
+    depends_on:
+      - vps-firefox

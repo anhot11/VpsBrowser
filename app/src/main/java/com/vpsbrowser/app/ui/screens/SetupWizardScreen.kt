@@ -370,7 +370,21 @@ fun SetupWizardScreen(
                         }
 
                         if (completedProfile != null) {
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
+                            if (completedProfile!!.cloudflareUrl.isNotBlank()) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(bottom = 8.dp)
+                                ) {
+                                    Column(modifier = Modifier.padding(10.dp)) {
+                                        Text("☁️ Túnel Cloudflare HTTPS Activo (Sin abrir puertos):", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                                        Text(completedProfile!!.cloudflareUrl, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
                             Button(
                                 onClick = { onDeploymentSuccess(completedProfile!!) },
                                 modifier = Modifier

@@ -111,10 +111,15 @@ fun BrowserScreen(
     var cursorX by remember { mutableFloatStateOf(400f) }
     var cursorY by remember { mutableFloatStateOf(600f) }
 
-    // Start Tunnel or Direct connection
+    // Start Tunnel, Cloudflare, or Direct connection
     fun connect() {
         connectionError = null
-        if (profile.useSshTunnel) {
+        if (profile.useCloudflareTunnel && profile.cloudflareUrl.isNotBlank()) {
+            isTunnelActive = true
+            val cfUrl = profile.cloudflareUrl.trimEnd('/')
+            currentUrl = cfUrl
+            webViewRef?.loadUrl(cfUrl)
+        } else if (profile.useSshTunnel) {
             isConnectingTunnel = true
             scope.launch {
                 val tunnelRes = SshTunnelManager.startTunnel(profile)
@@ -125,9 +130,22 @@ fun BrowserScreen(
                     webViewRef?.loadUrl(localUrl)
                 }.onFailure { err ->
                     isTunnelActive = false
-                    connectionError = "Fallo al crear túnel SSH: ${err.message}"
+                    if (profile.cloudflareUrl.isNotBlank()) {
+                        Toast.makeText(context, "Túnel SSH no disponible. Conectando vía Cloudflare Tunnel...", Toast.LENGTH_LONG).show()
+                        isTunnelActive = true
+                        val cfUrl = profile.cloudflareUrl.trimEnd('/')
+                        currentUrl = cfUrl
+                        webViewRef?.loadUrl(cfUrl)
+                    } else {
+                        connectionError = "Fallo al crear túnel SSH: ${err.message}. Si tu VPS no permite abrir puertos, usa Cloudflare Tunnel."
+                    }
                 }
             }
+        } else if (profile.cloudflareUrl.isNotBlank()) {
+            isTunnelActive = true
+            val cfUrl = profile.cloudflareUrl.trimEnd('/')
+            currentUrl = cfUrl
+            webViewRef?.loadUrl(cfUrl)
         } else {
             val directUrl = profile.getDirectUrl()
             currentUrl = directUrl

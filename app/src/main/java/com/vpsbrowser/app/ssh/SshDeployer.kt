@@ -58,6 +58,7 @@ object SshDeployer {
             val errorReader = BufferedReader(InputStreamReader(errorStream))
 
             var detectedPassword = ""
+            var detectedCloudflareUrl = ""
             var currentPercentage = 10
 
             var line: String? = reader.readLine()
@@ -89,7 +90,7 @@ object SshDeployer {
                     }
                     cleanLine.contains("[6/7]") -> {
                         currentPercentage = 85
-                        onProgress("Paso 6/7: Generando credenciales seguras...", currentPercentage)
+                        onProgress("Paso 6/7: Optimizando Firefox y Cloudflare Tunnel...", currentPercentage)
                     }
                     cleanLine.contains("[7/7]") -> {
                         currentPercentage = 92
@@ -99,6 +100,12 @@ object SshDeployer {
                         val parts = cleanLine.split(":")
                         if (parts.size >= 2) {
                             detectedPassword = parts[1].trim()
+                        }
+                    }
+                    cleanLine.contains("trycloudflare.com") -> {
+                        val match = Regex("https://[a-zA-Z0-9.-]+\\.trycloudflare\\.com").find(cleanLine)
+                        if (match != null) {
+                            detectedCloudflareUrl = match.value
                         }
                     }
                     cleanLine.contains("INSTALADO CON ÉXITO") -> {
@@ -137,6 +144,8 @@ object SshDeployer {
                 sshPassword = password,
                 sshPrivateKey = privateKey,
                 useSshTunnel = true,
+                cloudflareUrl = detectedCloudflareUrl,
+                useCloudflareTunnel = false,
                 browserPort = 3000,
                 browserPassword = detectedPassword,
                 useSsl = false,
