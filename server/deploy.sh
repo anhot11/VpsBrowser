@@ -79,9 +79,11 @@ echo -e "  • ${GREEN}✓ Herramientas base listas (curl, wget, openssl, ca-cer
 echo -e "\n${BLUE}[3/7] Optimizando memoria RAM, SWAP y rendimiento para VPS ligera...${NC}"
 TOTAL_RAM_MB=$(free -m | awk '/^Mem:/{print $2}')
 TOTAL_SWAP_MB=$(free -m | awk '/^Swap:/{print $2}')
+FREE_DISK_MB=$(df -m / | awk 'NR==2{print $4}')
 
 echo -e "  • Memoria RAM física: ${BOLD}${TOTAL_RAM_MB} MB${NC}"
 echo -e "  • Memoria SWAP actual: ${BOLD}${TOTAL_SWAP_MB} MB${NC}"
+echo -e "  • Espacio libre en disco: ${BOLD}${FREE_DISK_MB} MB${NC}"
 
 # Configuración de memoria compartida SHM adaptada a los recursos del host
 if [ "$TOTAL_RAM_MB" -lt 1500 ]; then
@@ -100,9 +102,18 @@ sysctl -w vm.swappiness=10 >/dev/null 2>&1 || true
 sysctl -w vm.vfs_cache_pressure=50 >/dev/null 2>&1 || true
 
 if [ "$TOTAL_RAM_MB" -lt 2048 ] && [ "$TOTAL_SWAP_MB" -lt 1024 ]; then
-    echo -e "  • ${YELLOW}VPS ligera detectada (<2GB RAM). Creando $SWAP_TARGET de memoria SWAP para máxima estabilidad...${NC}"
+    # Proteger VPS con disco pequeño para no agotar almacenamiento de Docker
+    if [ "$FREE_DISK_MB" -lt 3500 ]; then
+        echo -e "  • ${YELLOW}Espacio en disco ajustado (<3.5GB libres). Asignando SWAP ligera (512MB) para reservar espacio a Docker...${NC}"
+        SWAP_TARGET="512M"
+        SWAP_COUNT=512
+    else
+        SWAP_COUNT=2048
+    fi
+
     if [ ! -f /swapfile ]; then
-        fallocate -l $SWAP_TARGET /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=2048 status=none
+        echo -e "  • ${YELLOW}VPS ligera detectada (<2GB RAM). Creando $SWAP_TARGET de memoria SWAP para máxima estabilidad...${NC}"
+        fallocate -l $SWAP_TARGET /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=$SWAP_COUNT status=none
         chmod 600 /swapfile
         mkswap /swapfile >/dev/null 2>&1 || true
         swapon /swapfile >/dev/null 2>&1 || true
@@ -240,7 +251,16 @@ DEPLOY_DIR="/opt/vps-browser"
 mkdir -p "$DEPLOY_DIR/config"
 cd "$DEPLOY_DIR"
 
-PASS=$(openssl rand -hex 8)
+PASS=""
+if [ -f "$DEPLOY_DIR/docker-compose.yml" ]; then
+    EXISTING_PASS=$(grep -E 'PASSWORD=' "$DEPLOY_DIR/docker-compose.yml" 2>/dev/null | head -n 1 | cut -d= -f2 | tr -d ' ' || true)
+    if [ -n "$EXISTING_PASS" ]; then
+        PASS="$EXISTING_PASS"
+    fi
+fi
+if [ -z "$PASS" ]; then
+    PASS=$(openssl rand -hex 8)
+fi
 
 cat <<'EOF' > policies.json
 {
@@ -331,20 +351,63 @@ echo -e "  • ${GREEN}✓ Configuración generada con uBlock Origin, optimizaci
 echo -e "\n${BLUE}[7/7] Descargando imagen y levantando servicios Firefox y Cloudflare Tunnel...${NC}"
 
 IMAGE_NAME="lscr.io/linuxserver/firefox:latest"
-echo -e "  • Descargando imagen de Firefox ($IMAGE_NAME)..."
-if ! docker pull "$IMAGE_NAME"; then
-    echo -e "  • ${YELLOW}Probando descarga desde GitHub Container Registry (ghcr.io)...${NC}"
-    IMAGE_NAME="ghcr.io/linuxserver/firefox:latest"
-    if ! docker pull "$IMAGE_NAME"; then
-        echo -e "  • ${YELLOW}Probando descarga desde Docker Hub...${NC}"
-        IMAGE_NAME="docker.io/linuxserver/firefox:latest"
-        docker pull "$IMAGE_NAME" || true
+
+# Comprobar si la imagen ya existe localmente en Docker
+if docker image inspect "$IMAGE_NAME" >/dev/null 2>&1 || docker image inspect "ghcr.io/linuxserver/firefox:latest" >/dev/null 2>&1 || docker image inspect "linuxserver/firefox:latest" >/dev/null 2>&1; then
+    echo -e "  • ${GREEN}✓ Imagen de Firefox ya descargada en la VPS. Usando caché local...${NC}"
+else
+    echo -e "  • Descargando imagen de Firefox ($IMAGE_NAME)..."
+    echo -e "  • ${YELLOW}Nota: La descarga y extracción de capas (~1 GB) toma entre 1 y 3 minutos según la CPU/disco de tu VPS.${NC}"
+    echo -e "  • ${YELLOW}Mantén la pantalla activa; la terminal reportará el progreso a continuación.${NC}"
+
+    # Monitor de actividad en segundo plano para evitar timeouts de red móvil y reportar extracción
+    (
+        elapsed=0
+        while true; do
+            sleep 10
+            elapsed=$((elapsed + 10))
+            mins=$((elapsed / 60))
+            secs=$((elapsed % 60))
+            echo -e "    ⏳ Procesando y extrayendo capas del navegador en Docker (${mins}m ${secs}s transcurridos)..."
+        done
+    ) &
+    HEARTBEAT_PID=$!
+
+    PULL_SUCCESS=0
+    if docker pull "$IMAGE_NAME"; then
+        PULL_SUCCESS=1
+    else
+        echo -e "  • ${YELLOW}Probando descarga desde GitHub Container Registry (ghcr.io)...${NC}"
+        IMAGE_NAME="ghcr.io/linuxserver/firefox:latest"
+        if docker pull "$IMAGE_NAME"; then
+            PULL_SUCCESS=1
+        else
+            echo -e "  • ${YELLOW}Probando descarga desde Docker Hub...${NC}"
+            IMAGE_NAME="docker.io/linuxserver/firefox:latest"
+            if docker pull "$IMAGE_NAME"; then
+                PULL_SUCCESS=1
+            fi
+        fi
+        sed -i "s|image: lscr.io/linuxserver/firefox:latest|image: $IMAGE_NAME|g" docker-compose.yml 2>/dev/null || true
     fi
-    sed -i "s|image: lscr.io/linuxserver/firefox:latest|image: $IMAGE_NAME|g" docker-compose.yml 2>/dev/null || true
+
+    kill $HEARTBEAT_PID 2>/dev/null || true
+    wait $HEARTBEAT_PID 2>/dev/null || true
+
+    if [ "$PULL_SUCCESS" -eq 1 ]; then
+        echo -e "  • ${GREEN}✓ Imagen de Firefox lista y descomprimida correctamente.${NC}"
+    else
+        echo -e "  • ${YELLOW}Aviso: Continuando con el arranque del contenedor...${NC}"
+    fi
 fi
 
 # Descarga previa de imagen cloudflared (tolerante a fallos)
-docker pull cloudflare/cloudflared:latest >/dev/null 2>&1 || true
+if docker image inspect "cloudflare/cloudflared:latest" >/dev/null 2>&1; then
+    echo -e "  • ${GREEN}✓ Imagen de Cloudflare Tunnel en caché local.${NC}"
+else
+    echo -e "  • Obteniendo imagen de Cloudflare Tunnel..."
+    docker pull cloudflare/cloudflared:latest >/dev/null 2>&1 || true
+fi
 
 # Levantar contenedor
 CONTAINER_STARTED=0
@@ -392,12 +455,13 @@ fi
 # 9. Asignación y lectura del Túnel Cloudflare Quick HTTPS
 echo -e "  • ${BLUE}Obteniendo enlace seguro de Cloudflare Tunnel (sin puertos abiertos)...${NC}"
 CF_URL=""
-for i in $(seq 1 12); do
+for i in $(seq 1 15); do
     sleep 1
     CF_URL=$(docker logs vps-tunnel 2>&1 | grep -o 'https://[-a-zA-Z0-9]*\.trycloudflare\.com' | head -n 1 || true)
     if [ -n "$CF_URL" ]; then
         break
     fi
+    echo -e "  • Esperando asignación de túnel Cloudflare ($i/15)..."
 done
 
 if [ -n "$CF_URL" ]; then

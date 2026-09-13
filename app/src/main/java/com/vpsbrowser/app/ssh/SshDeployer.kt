@@ -37,7 +37,10 @@ object SshDeployer {
                 }
                 setConfig("StrictHostKeyChecking", "no")
                 setConfig("PreferredAuthentications", if (privateKey.isNotBlank()) "publickey,password" else "password,keyboard-interactive")
-                connect(20000) // 20s connection timeout
+                serverAliveInterval = 5000 // KeepAlive every 5s prevents mobile carrier/NAT drops
+                serverAliveCountMax = 120 // Up to 10 minutes tolerance
+                timeout = 600000 // 10 minutes socket read timeout
+                connect(25000)
             }
 
             onProgress("Conexión SSH establecida. Iniciando instalador...", 10)
@@ -45,17 +48,16 @@ object SshDeployer {
 
             val channel = session.openChannel("exec") as ChannelExec
 
-            // Command executes the smart universal deployment script directly on the VPS
-            val remoteCmd = "curl -fsSL https://raw.githubusercontent.com/anhot11/VpsBrowser/main/server/deploy.sh | bash"
+            // Command executes deployment script with stderr merged into stdout (2>&1)
+            // This prevents OS pipe deadlock and guarantees all logs/errors stream in real-time
+            val remoteCmd = "curl -fsSL https://raw.githubusercontent.com/anhot11/VpsBrowser/main/server/deploy.sh | bash 2>&1"
             channel.setCommand(remoteCmd)
             channel.setErrStream(System.err)
 
             val inputStream = channel.inputStream
-            val errorStream = channel.errStream
             channel.connect(15000)
 
             val reader = BufferedReader(InputStreamReader(inputStream))
-            val errorReader = BufferedReader(InputStreamReader(errorStream))
 
             var detectedPassword = ""
             var detectedCloudflareUrl = ""
@@ -63,8 +65,10 @@ object SshDeployer {
 
             var line: String? = reader.readLine()
             while (line != null) {
-                val cleanLine = line.replace(Regex("\u001B\\[[;\\d]*m"), "")
-                onLogLine(cleanLine)
+                val cleanLine = line.replace(Regex("\u001B\\[[;?0-9]*[a-zA-Z]"), "").replace("\r", "").trim()
+                if (cleanLine.isNotBlank()) {
+                    onLogLine(cleanLine)
+                }
 
                 // Track and parse progress
                 when {
@@ -78,7 +82,7 @@ object SshDeployer {
                     }
                     cleanLine.contains("[3/7]") -> {
                         currentPercentage = 50
-                        onProgress("Paso 3/7: Optimizando memoria RAM y SWAP...", currentPercentage)
+                        onProgress("Paso 3/7: Optimizando memoria RAM, SWAP y disco...", currentPercentage)
                     }
                     cleanLine.contains("[4/7]") -> {
                         currentPercentage = 65
@@ -93,8 +97,12 @@ object SshDeployer {
                         onProgress("Paso 6/7: Optimizando Firefox y Cloudflare Tunnel...", currentPercentage)
                     }
                     cleanLine.contains("[7/7]") -> {
-                        currentPercentage = 92
+                        currentPercentage = 90
                         onProgress("Paso 7/7: Descargando y levantando navegador...", currentPercentage)
+                    }
+                    cleanLine.contains("⏳") || cleanLine.contains("Procesando y extrayendo") -> {
+                        currentPercentage = 95
+                        onProgress("Paso 7/7: Descomprimiendo capas en Docker...", currentPercentage)
                     }
                     cleanLine.contains("Contraseña / Token:") -> {
                         val parts = cleanLine.split(":")
@@ -125,14 +133,8 @@ object SshDeployer {
             channel.disconnect()
 
             if (exitStatus != 0) {
-                val errText = StringBuilder()
-                var errLine = errorReader.readLine()
-                while (errLine != null) {
-                    errText.append(errLine).append("\n")
-                    errLine = errorReader.readLine()
-                }
                 return@withContext Result.failure(
-                    Exception("El instalador finalizó con código $exitStatus. ${errText.toString().take(300)}")
+                    Exception("El instalador finalizó con código de error $exitStatus. Revisa los logs de la terminal para ver el detalle.")
                 )
             }
 
