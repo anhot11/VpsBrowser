@@ -76,6 +76,11 @@ fun VPSBrowserApp(securityManager: SecurityManager) {
                 BrowserScreen(
                     profile = activeProfile!!,
                     searchEngineUrl = securityManager.getSearchEngine(),
+                    onSaveProfile = { updated ->
+                        securityManager.saveProfile(updated)
+                        activeProfile = updated
+                        profiles = securityManager.getAllProfiles()
+                    },
                     onOpenServerManager = { currentScreen = AppScreen.SERVER_MANAGER },
                     onOpenProfiles = { currentScreen = AppScreen.PROFILES }
                 )

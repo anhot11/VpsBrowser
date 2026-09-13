@@ -14,6 +14,7 @@ data class VpsProfile(
     var cloudflareUrl: String = "", // Free HTTPS Cloudflare Tunnel (trycloudflare.com)
     var useCloudflareTunnel: Boolean = false, // Connect directly via Cloudflare Tunnel
     var browserPort: Int = 3000,
+    var browserUser: String = "admin",
     var browserPassword: String = "",
     var browserEngine: String = "firefox",
     var useSsl: Boolean = false,

@@ -59,6 +59,7 @@ object SshDeployer {
 
             val reader = BufferedReader(InputStreamReader(inputStream))
 
+            var detectedUser = "admin"
             var detectedPassword = ""
             var detectedCloudflareUrl = ""
             var currentPercentage = 10
@@ -104,11 +105,11 @@ object SshDeployer {
                         currentPercentage = 95
                         onProgress("Paso 7/7: Descomprimiendo capas en Docker...", currentPercentage)
                     }
+                    cleanLine.contains("Usuario:") -> {
+                        detectedUser = cleanLine.substringAfter("Usuario:").trim().ifBlank { "admin" }
+                    }
                     cleanLine.contains("Contraseña / Token:") -> {
-                        val parts = cleanLine.split(":")
-                        if (parts.size >= 2) {
-                            detectedPassword = parts[1].trim()
-                        }
+                        detectedPassword = cleanLine.substringAfter("Contraseña / Token:").trim()
                     }
                     cleanLine.contains("trycloudflare.com") -> {
                         val match = Regex("https://[a-zA-Z0-9.-]+\\.trycloudflare\\.com").find(cleanLine)
@@ -149,6 +150,7 @@ object SshDeployer {
                 cloudflareUrl = detectedCloudflareUrl,
                 useCloudflareTunnel = false,
                 browserPort = 3000,
+                browserUser = detectedUser.ifBlank { "admin" },
                 browserPassword = detectedPassword,
                 useSsl = false,
                 touchEmulation = true

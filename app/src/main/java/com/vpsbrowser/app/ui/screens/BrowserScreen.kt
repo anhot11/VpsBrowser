@@ -8,6 +8,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.HttpAuthHandler
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
@@ -20,6 +21,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -29,6 +31,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -39,6 +42,9 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mouse
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -50,6 +56,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -66,6 +73,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -87,6 +96,7 @@ import kotlin.math.roundToInt
 fun BrowserScreen(
     profile: VpsProfile,
     searchEngineUrl: String,
+    onSaveProfile: (VpsProfile) -> Unit = {},
     onOpenServerManager: () -> Unit,
     onOpenProfiles: () -> Unit,
     modifier: Modifier = Modifier
@@ -109,6 +119,15 @@ fun BrowserScreen(
     var isTunnelActive by remember { mutableStateOf(false) }
     var isConnectingTunnel by remember { mutableStateOf(false) }
     var connectionError by remember { mutableStateOf<String?>(null) }
+
+    // HTTP Basic Auth Handling
+    var showAuthDialog by remember { mutableStateOf(false) }
+    var authUsername by remember { mutableStateOf(profile.browserUser.ifBlank { "admin" }) }
+    var authPassword by remember { mutableStateOf(profile.browserPassword) }
+    var authAttempts by remember { mutableIntStateOf(0) }
+    var pendingAuthHandler by remember { mutableStateOf<HttpAuthHandler?>(null) }
+    var pendingAuthHost by remember { mutableStateOf("") }
+    var pendingAuthRealm by remember { mutableStateOf("") }
 
     // Virtual cursor position
     var cursorX by remember { mutableFloatStateOf(400f) }
@@ -243,6 +262,31 @@ fun BrowserScreen(
                     webViewClient = object : WebViewClient() {
                         override fun onPageFinished(view: WebView?, url: String?) {
                             url?.let { omnibarText = it }
+                        }
+
+                        override fun onReceivedHttpAuthRequest(
+                            view: WebView?,
+                            handler: HttpAuthHandler?,
+                            host: String?,
+                            realm: String?
+                        ) {
+                            val user = profile.browserUser.ifBlank { "admin" }
+                            val pass = profile.browserPassword
+
+                            // If we have credentials saved and haven't tried yet, auto-authenticate
+                            if (pass.isNotBlank() && authAttempts == 0) {
+                                authAttempts++
+                                view?.setHttpAuthUsernamePassword(host, realm, user, pass)
+                                handler?.proceed(user, pass)
+                            } else {
+                                // No password or previous attempt failed: ask user
+                                pendingAuthHandler = handler
+                                pendingAuthHost = host ?: ""
+                                pendingAuthRealm = realm ?: ""
+                                authUsername = user
+                                authPassword = pass
+                                showAuthDialog = true
+                            }
                         }
                     }
 
@@ -460,5 +504,96 @@ fun BrowserScreen(
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 12.dp)
         )
+
+        // HTTP Basic Auth Dialog
+        if (showAuthDialog) {
+            var isPassVisible by remember { mutableStateOf(false) }
+            AlertDialog(
+                onDismissRequest = {
+                    pendingAuthHandler?.cancel()
+                    showAuthDialog = false
+                },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Autenticación Requerida")
+                    }
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            "Tu servidor VPS requiere credenciales de acceso (HTTP Basic Auth) para cargar Firefox.",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        OutlinedTextField(
+                            value = authUsername,
+                            onValueChange = { authUsername = it },
+                            label = { Text("Usuario") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = authPassword,
+                            onValueChange = { authPassword = it },
+                            label = { Text("Contraseña / Token") },
+                            singleLine = true,
+                            visualTransformation = if (isPassVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                            trailingIcon = {
+                                IconButton(onClick = { isPassVisible = !isPassVisible }) {
+                                    Icon(
+                                        if (isPassVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                        contentDescription = null
+                                    )
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(
+                                onClick = {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    val clip = ClipData.newPlainText("VPS Command", "cat /opt/vps-browser/docker-compose.yml | grep PASSWORD")
+                                    clipboard.setPrimaryClip(clip)
+                                    Toast.makeText(context, "Comando copiado al portapapeles", Toast.LENGTH_SHORT).show()
+                                }
+                            ) {
+                                Text("Copiar comando para ver clave en VPS", fontSize = 11.sp)
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val user = authUsername.trim().ifBlank { "admin" }
+                            val pass = authPassword.trim()
+                            profile.browserUser = user
+                            profile.browserPassword = pass
+                            onSaveProfile(profile)
+                            webViewRef?.setHttpAuthUsernamePassword(pendingAuthHost, pendingAuthRealm, user, pass)
+                            pendingAuthHandler?.proceed(user, pass)
+                            showAuthDialog = false
+                        }
+                    ) {
+                        Text("Acceder")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            pendingAuthHandler?.cancel()
+                            showAuthDialog = false
+                        }
+                    ) {
+                        Text("Cancelar")
+                    }
+                }
+            )
+        }
     }
 }
