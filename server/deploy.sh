@@ -53,22 +53,26 @@ esac
 echo -e "\n${BLUE}[2/7] Comprobando e instalando utilidades necesarias...${NC}"
 install_pkg() {
     if command -v apt-get &>/dev/null; then
-        apt-get update -y >/dev/null 2>&1
-        apt-get install -y curl wget openssl ca-certificates >/dev/null 2>&1
+        export DEBIAN_FRONTEND=noninteractive
+        # Limpieza de posibles repositorios rotos de Docker previos
+        rm -f /etc/apt/sources.list.d/docker.list* 2>/dev/null || true
+        dpkg --configure -a >/dev/null 2>&1 || true
+        apt-get update -y >/dev/null 2>&1 || apt-get update --fix-missing -y >/dev/null 2>&1 || true
+        apt-get install -y curl wget openssl ca-certificates >/dev/null 2>&1 || true
     elif command -v dnf &>/dev/null; then
-        dnf install -y curl wget openssl ca-certificates >/dev/null 2>&1
+        dnf install -y curl wget openssl ca-certificates >/dev/null 2>&1 || true
     elif command -v yum &>/dev/null; then
-        yum install -y curl wget openssl ca-certificates >/dev/null 2>&1
+        yum install -y curl wget openssl ca-certificates >/dev/null 2>&1 || true
     elif command -v pacman &>/dev/null; then
-        pacman -Sy --noconfirm curl wget openssl ca-certificates >/dev/null 2>&1
+        pacman -Sy --noconfirm curl wget openssl ca-certificates >/dev/null 2>&1 || true
     elif command -v apk &>/dev/null; then
-        apk add --no-cache curl wget openssl ca-certificates bash >/dev/null 2>&1
+        apk add --no-cache curl wget openssl ca-certificates bash >/dev/null 2>&1 || true
     elif command -v zypper &>/dev/null; then
-        zypper install -y curl wget openssl ca-certificates >/dev/null 2>&1
+        zypper install -y curl wget openssl ca-certificates >/dev/null 2>&1 || true
     fi
 }
 install_pkg
-echo -e "  • ${GREEN}✓ Herramientas base listas (curl, wget, openssl).${NC}"
+echo -e "  • ${GREEN}✓ Herramientas base listas (curl, wget, openssl, ca-certificates).${NC}"
 
 # 4. Detección y optimización de memoria RAM y SWAP (crucial para VPS con 512MB / 1GB)
 echo -e "\n${BLUE}[3/7] Verificando memoria RAM y memoria SWAP...${NC}"
@@ -83,8 +87,8 @@ if [ "$TOTAL_RAM_MB" -lt 2048 ] && [ "$TOTAL_SWAP_MB" -lt 1024 ]; then
     if [ ! -f /swapfile ]; then
         fallocate -l 2G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=2048 status=none
         chmod 600 /swapfile
-        mkswap /swapfile >/dev/null
-        swapon /swapfile
+        mkswap /swapfile >/dev/null 2>&1 || true
+        swapon /swapfile >/dev/null 2>&1 || true
         if ! grep -q "/swapfile" /etc/fstab; then
             echo '/swapfile none swap sw 0 0' >> /etc/fstab
         fi
@@ -100,53 +104,109 @@ fi
 echo -e "\n${BLUE}[4/7] Comprobando entorno Docker...${NC}"
 if ! command -v docker &>/dev/null; then
     echo -e "  • Docker no encontrado. Instalando Docker automáticamente..."
-    curl -fsSL https://get.docker.com | sh
+
+    # Prioridad 1: Repositorio oficial de la distribución Linux (funciona en todo el mundo sin bloqueos por región)
+    if command -v apt-get &>/dev/null; then
+        export DEBIAN_FRONTEND=noninteractive
+        rm -f /etc/apt/sources.list.d/docker.list* 2>/dev/null || true
+        apt-get update -y >/dev/null 2>&1 || true
+        apt-get install -y docker.io containerd >/dev/null 2>&1 || apt-get install -y docker.io >/dev/null 2>&1 || true
+    elif command -v dnf &>/dev/null; then
+        dnf install -y docker containerd >/dev/null 2>&1 || dnf install -y moby-engine >/dev/null 2>&1 || true
+    elif command -v yum &>/dev/null; then
+        yum install -y docker containerd >/dev/null 2>&1 || true
+    elif command -v pacman &>/dev/null; then
+        pacman -Sy --noconfirm docker >/dev/null 2>&1 || true
+    elif command -v apk &>/dev/null; then
+        apk add --no-cache docker >/dev/null 2>&1 || true
+    fi
+
+    # Prioridad 2: Si el paquete del SO no lo instaló, intentar get.docker.com protegido contra fallos
+    if ! command -v docker &>/dev/null; then
+        echo -e "  • Intentando instalador oficial get.docker.com..."
+        (curl -fsSL --connect-timeout 10 https://get.docker.com | sh) >/dev/null 2>&1 || true
+    fi
 fi
 
 # Habilitar e iniciar servicio Docker
 if command -v systemctl &>/dev/null; then
-    systemctl enable --now docker >/dev/null 2>&1 || true
+    systemctl unmask docker >/dev/null 2>&1 || true
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    systemctl enable --now docker >/dev/null 2>&1 || systemctl start docker >/dev/null 2>&1 || true
 elif command -v service &>/dev/null; then
     service docker start >/dev/null 2>&1 || true
 fi
+
+# Verificar si Docker quedó disponible
+if ! command -v docker &>/dev/null; then
+    echo -e "${RED}[ERROR] No se pudo instalar Docker automáticamente en esta VPS.${NC}"
+    echo -e "Intenta instalar Docker en tu servidor con: ${YELLOW}apt install docker.io${NC}"
+    exit 1
+fi
 echo -e "  • ${GREEN}✓ Docker instalado y en ejecución ($(docker --version 2>/dev/null | awk '{print $3}' | tr -d ',')).${NC}"
 
-# Comprobar Docker Compose Plugin
-if ! docker compose version &>/dev/null; then
-    echo -e "  • Instalando Docker Compose Plugin..."
+# Comprobar Docker Compose Plugin o Standalone
+COMPOSE_CMD=""
+if docker compose version &>/dev/null; then
+    COMPOSE_CMD="docker compose"
+elif command -v docker-compose &>/dev/null; then
+    COMPOSE_CMD="docker-compose"
+else
+    echo -e "  • Instalando Docker Compose..."
     if command -v apt-get &>/dev/null; then
-        apt-get install -y docker-compose-plugin >/dev/null 2>&1 || true
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get install -y docker-compose-plugin >/dev/null 2>&1 || apt-get install -y docker-compose-v2 >/dev/null 2>&1 || apt-get install -y docker-compose >/dev/null 2>&1 || true
     elif command -v dnf &>/dev/null; then
-        dnf install -y docker-compose-plugin >/dev/null 2>&1 || true
+        dnf install -y docker-compose-plugin >/dev/null 2>&1 || dnf install -y docker-compose >/dev/null 2>&1 || true
     elif command -v yum &>/dev/null; then
-        yum install -y docker-compose-plugin >/dev/null 2>&1 || true
+        yum install -y docker-compose-plugin >/dev/null 2>&1 || yum install -y docker-compose >/dev/null 2>&1 || true
+    elif command -v pacman &>/dev/null; then
+        pacman -Sy --noconfirm docker-compose >/dev/null 2>&1 || true
+    elif command -v apk &>/dev/null; then
+        apk add --no-cache docker-cli-compose >/dev/null 2>&1 || true
     fi
 
-    # Si sigue sin estar disponible, descarga el binario oficial
-    if ! docker compose version &>/dev/null; then
-        mkdir -p /usr/local/lib/docker/cli-plugins
+    if docker compose version &>/dev/null; then
+        COMPOSE_CMD="docker compose"
+    elif command -v docker-compose &>/dev/null; then
+        COMPOSE_CMD="docker-compose"
+    else
+        # Si sigue sin estar disponible, descarga el binario oficial de GitHub Releases
+        mkdir -p /usr/local/lib/docker/cli-plugins /usr/local/bin
         COMPOSE_VERSION="v2.29.2"
         case "$ARCH" in
             x86_64|amd64) DOCKER_COMPOSE_ARCH="x86_64" ;;
             aarch64|arm64) DOCKER_COMPOSE_ARCH="aarch64" ;;
             *) DOCKER_COMPOSE_ARCH="x86_64" ;;
         esac
-        curl -SL "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-${DOCKER_COMPOSE_ARCH}" -o /usr/local/lib/docker/cli-plugins/docker-compose
-        chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+        curl -fsSL --connect-timeout 10 "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-${DOCKER_COMPOSE_ARCH}" -o /usr/local/lib/docker/cli-plugins/docker-compose >/dev/null 2>&1 || true
+        chmod +x /usr/local/lib/docker/cli-plugins/docker-compose >/dev/null 2>&1 || true
+        cp /usr/local/lib/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose >/dev/null 2>&1 || true
+
+        if docker compose version &>/dev/null; then
+            COMPOSE_CMD="docker compose"
+        elif command -v docker-compose &>/dev/null; then
+            COMPOSE_CMD="docker-compose"
+        fi
     fi
 fi
-echo -e "  • ${GREEN}✓ Docker Compose listo ($(docker compose version 2>/dev/null | awk '{print $4}')).${NC}"
+
+if [ -n "$COMPOSE_CMD" ]; then
+    echo -e "  • ${GREEN}✓ Docker Compose listo ($($COMPOSE_CMD version 2>/dev/null | awk '{print $4}')).${NC}"
+else
+    echo -e "  • ${YELLOW}✓ Usando Docker Engine directo como motor de ejecución.${NC}"
+fi
 
 # 6. Apertura de puertos en Firewall (UFW / Firewalld / iptables)
 echo -e "\n${BLUE}[5/7] Configurando cortafuegos (Firewall) para puertos 3000 y 3001...${NC}"
 if command -v ufw &>/dev/null && ufw status | grep -qw "active"; then
-    ufw allow 3000/tcp comment 'VPS Browser HTTP' >/dev/null 2>&1
-    ufw allow 3001/tcp comment 'VPS Browser HTTPS' >/dev/null 2>&1
+    ufw allow 3000/tcp comment 'VPS Browser HTTP' >/dev/null 2>&1 || true
+    ufw allow 3001/tcp comment 'VPS Browser HTTPS' >/dev/null 2>&1 || true
     echo -e "  • ${GREEN}✓ Puertos 3000 y 3001 abiertos en UFW.${NC}"
-elif command -v firewall-cmd &>/dev/null && systemctl is-active --quiet firewalld; then
-    firewall-cmd --permanent --add-port=3000/tcp >/dev/null 2>&1
-    firewall-cmd --permanent --add-port=3001/tcp >/dev/null 2>&1
-    firewall-cmd --reload >/dev/null 2>&1
+elif command -v firewall-cmd &>/dev/null && systemctl is-active --quiet firewalld 2>/dev/null; then
+    firewall-cmd --permanent --add-port=3000/tcp >/dev/null 2>&1 || true
+    firewall-cmd --permanent --add-port=3001/tcp >/dev/null 2>&1 || true
+    firewall-cmd --reload >/dev/null 2>&1 || true
     echo -e "  • ${GREEN}✓ Puertos 3000 y 3001 abiertos en Firewalld.${NC}"
 elif command -v iptables &>/dev/null; then
     iptables -I INPUT -p tcp --dport 3000 -j ACCEPT >/dev/null 2>&1 || true
@@ -159,7 +219,6 @@ fi
 # 7. Preparación de carpeta y archivo docker-compose.yml
 echo -e "\n${BLUE}[6/7] Configurando directorio y credenciales...${NC}"
 
-# Si el script se ejecuta directamente por curl sin clonar el repo:
 DEPLOY_DIR="/opt/vps-browser"
 mkdir -p "$DEPLOY_DIR/config"
 cd "$DEPLOY_DIR"
@@ -224,14 +283,57 @@ EOF
 
 echo -e "  • ${GREEN}✓ Configuración generada en $DEPLOY_DIR/docker-compose.yml (con uBlock Origin y hardening)${NC}"
 
-
 # 8. Despliegue del Contenedor
 echo -e "\n${BLUE}[7/7] Descargando imagen y levantando el contenedor Firefox...${NC}"
-docker compose pull
-docker compose up -d
+
+IMAGE_NAME="lscr.io/linuxserver/firefox:latest"
+echo -e "  • Descargando imagen de Firefox..."
+if ! docker pull "$IMAGE_NAME"; then
+    echo -e "  • ${YELLOW}Probando descarga desde GitHub Container Registry (ghcr.io)...${NC}"
+    IMAGE_NAME="ghcr.io/linuxserver/firefox:latest"
+    if ! docker pull "$IMAGE_NAME"; then
+        echo -e "  • ${YELLOW}Probando descarga desde Docker Hub...${NC}"
+        IMAGE_NAME="docker.io/linuxserver/firefox:latest"
+        docker pull "$IMAGE_NAME" || true
+    fi
+    sed -i "s|image: lscr.io/linuxserver/firefox:latest|image: $IMAGE_NAME|g" docker-compose.yml 2>/dev/null || true
+fi
+
+# Levantar contenedor
+CONTAINER_STARTED=0
+if [ -n "$COMPOSE_CMD" ]; then
+    echo -e "  • Iniciando contenedor con $COMPOSE_CMD..."
+    if $COMPOSE_CMD up -d; then
+        CONTAINER_STARTED=1
+    else
+        echo -e "  • ${YELLOW}Compose falló, intentando inicio directo con Docker Engine...${NC}"
+    fi
+fi
+
+if [ "$CONTAINER_STARTED" -eq 0 ]; then
+    echo -e "  • Iniciando contenedor directamente con Docker Engine..."
+    docker stop vps-firefox >/dev/null 2>&1 || true
+    docker rm vps-firefox >/dev/null 2>&1 || true
+    docker run -d \
+      --name vps-firefox \
+      --security-opt seccomp=unconfined \
+      -e PUID=1000 \
+      -e PGID=1000 \
+      -e TZ=Etc/UTC \
+      -e CUSTOM_USER=admin \
+      -e PASSWORD="$PASS" \
+      -v "$DEPLOY_DIR/config":/config \
+      -v "$DEPLOY_DIR/policies.json":/usr/lib/firefox/distribution/policies.json:ro \
+      -v "$DEPLOY_DIR/policies.json":/etc/firefox/policies/policies.json:ro \
+      -p 3000:3000 \
+      -p 3001:3001 \
+      --shm-size=2gb \
+      --restart unless-stopped \
+      "$IMAGE_NAME"
+fi
 
 # Detección de IP Pública
-PUBLIC_IP=$(curl -s --max-time 3 https://api.ipify.org || curl -s --max-time 3 https://icanhazip.com || hostname -I | awk '{print $1}')
+PUBLIC_IP=$(curl -s --max-time 3 https://api.ipify.org 2>/dev/null || curl -s --max-time 3 https://icanhazip.com 2>/dev/null || hostname -I | awk '{print $1}')
 
 echo ""
 echo -e "${GREEN}${BOLD}======================================================${NC}"
@@ -248,8 +350,8 @@ echo ""
 echo -e "  • ${BOLD}Enlace Web Directo:${NC} ${BLUE}http://$PUBLIC_IP:3000${NC}"
 echo -e "${GREEN}${BOLD}======================================================${NC}"
 echo -e "Para reiniciar o ver logs en cualquier momento:"
-echo -e "  • Ver estado:  ${BOLD}cd $DEPLOY_DIR && docker compose ps${NC}"
-echo -e "  • Ver logs:    ${BOLD}cd $DEPLOY_DIR && docker compose logs -f${NC}"
-echo -e "  • Detener:     ${BOLD}cd $DEPLOY_DIR && docker compose down${NC}"
-echo -e "  • Iniciar:     ${BOLD}cd $DEPLOY_DIR && docker compose up -d${NC}"
+echo -e "  • Ver estado:  ${BOLD}cd $DEPLOY_DIR && docker compose ps 2>/dev/null || docker ps${NC}"
+echo -e "  • Ver logs:    ${BOLD}cd $DEPLOY_DIR && docker compose logs -f 2>/dev/null || docker logs -f vps-firefox${NC}"
+echo -e "  • Detener:     ${BOLD}cd $DEPLOY_DIR && docker compose down 2>/dev/null || docker stop vps-firefox${NC}"
+echo -e "  • Iniciar:     ${BOLD}cd $DEPLOY_DIR && docker compose up -d 2>/dev/null || docker start vps-firefox${NC}"
 echo -e "${GREEN}${BOLD}======================================================${NC}\n"

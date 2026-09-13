@@ -268,6 +268,7 @@ fun SetupWizardScreen(
                                         port = sshPort.toIntOrNull() ?: 22,
                                         user = sshUser.trim().ifBlank { "root" },
                                         password = if (authMode == 0) password else "",
+                                        privateKey = if (authMode == 1) privateKey else "",
                                         browserEngine = "firefox",
                                         onProgress = { title, pct ->
                                             scope.launch(Dispatchers.Main) {

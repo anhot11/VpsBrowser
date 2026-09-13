@@ -14,7 +14,8 @@ object SshDeployer {
         host: String,
         port: Int = 22,
         user: String = "root",
-        password: String,
+        password: String = "",
+        privateKey: String = "",
         browserEngine: String = "firefox",
         onProgress: (stepTitle: String, percentage: Int) -> Unit,
         onLogLine: (line: String) -> Unit
@@ -26,10 +27,16 @@ object SshDeployer {
             onProgress("Conectando con tu servidor por SSH...", 5)
             onLogLine(">>> Conectando a $user@$host:$port vía SSH...")
 
+            if (privateKey.isNotBlank()) {
+                jsch.addIdentity("deploy_key", privateKey.toByteArray(), null, null)
+            }
+
             session = jsch.getSession(user, host, port).apply {
-                setPassword(password)
+                if (privateKey.isBlank()) {
+                    setPassword(password)
+                }
                 setConfig("StrictHostKeyChecking", "no")
-                setConfig("PreferredAuthentications", "password,keyboard-interactive")
+                setConfig("PreferredAuthentications", if (privateKey.isNotBlank()) "publickey,password" else "password,keyboard-interactive")
                 connect(20000) // 20s connection timeout
             }
 
@@ -128,6 +135,7 @@ object SshDeployer {
                 sshPort = port,
                 sshUser = user,
                 sshPassword = password,
+                sshPrivateKey = privateKey,
                 useSshTunnel = true,
                 browserPort = 3000,
                 browserPassword = detectedPassword,
