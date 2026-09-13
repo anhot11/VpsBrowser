@@ -135,8 +135,8 @@ class ProfilesActivity : AppCompatActivity() {
                 } ?: VpsProfile(
                     name = name,
                     host = host,
-                    port = port,
-                    password = password,
+                    browserPort = port,
+                    browserPassword = password,
                     useSsl = useSsl,
                     touchEmulation = touch
                 )
