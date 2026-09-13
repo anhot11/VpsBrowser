@@ -253,7 +253,10 @@ fun ProfilesScreen(
                         useCloudflareTunnel = useCloudflare,
                         browserPort = browserPort.toIntOrNull() ?: 3000,
                         browserPassword = browserPass,
-                        useSshTunnel = useTunnel
+                        useSshTunnel = useTunnel,
+                        connectionMode = target.connectionMode,
+                        enableIpShield = target.enableIpShield,
+                        enableBbr = target.enableBbr
                     )
                     onSaveProfile(updated)
                     isAddingNew = false

@@ -133,4 +133,110 @@ object SshRemoteLifecycle {
             )
         }
     }
+
+    suspend fun enableTurboStreaming(profile: VpsProfile): Result<String> {
+        val cmd = """
+            modprobe tcp_bbr 2>/dev/null || true
+            mkdir -p /etc/sysctl.d
+            cat <<'EOF' > /etc/sysctl.d/99-vpsbrowser-turbo.conf
+net.core.default_qdisc = fq
+net.ipv4.tcp_congestion_control = bbr
+net.ipv4.tcp_notsent_lowat = 16384
+net.ipv4.tcp_fastopen = 3
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.tcp_fin_timeout = 15
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+net.ipv4.tcp_rmem = 4096 87380 16777216
+net.ipv4.tcp_wmem = 4096 65536 16777216
+EOF
+            sysctl -p /etc/sysctl.d/99-vpsbrowser-turbo.conf 2>&1 || sysctl -w net.ipv4.tcp_congestion_control=bbr 2>&1 || true
+            echo "⚡ TCP BBR Y OPTIMIZACIONES DE RED ACTIVAS:"
+            echo -n "• Algoritmo de Congestión: " && (sysctl net.ipv4.tcp_congestion_control 2>/dev/null || echo "Desconocido")
+            echo -n "• Cola de Paquetes (qdisc): " && (sysctl net.core.default_qdisc 2>/dev/null || echo "Desconocido")
+            echo -n "• TCP Fast Open: " && (sysctl net.ipv4.tcp_fastopen 2>/dev/null || echo "Desconocido")
+        """.trimIndent()
+        return executeCommand(profile, cmd)
+    }
+
+    suspend fun whitelistClientIp(profile: VpsProfile, clientIp: String): Result<String> {
+        val cleanIp = clientIp.trim()
+        if (cleanIp.isBlank() || !cleanIp.matches(Regex("^[0-9a-fA-F:.]+$"))) {
+            return Result.failure(IllegalArgumentException("Dirección IP no válida: $clientIp"))
+        }
+        val port = profile.browserPort
+        val cmd = """
+            if [ -f /opt/vps-browser/shield-firewall.sh ]; then
+                bash /opt/vps-browser/shield-firewall.sh allow "$cleanIp" $port
+            else
+                iptables -D INPUT -p tcp -s "$cleanIp" --dport $port -j ACCEPT 2>/dev/null || true
+                iptables -I INPUT 1 -p tcp -s "$cleanIp" --dport $port -j ACCEPT
+                echo "ALLOWED $cleanIp on port $port"
+            fi
+        """.trimIndent()
+        return executeCommand(profile, cmd)
+    }
+
+    suspend fun enableStealthShield(profile: VpsProfile): Result<String> {
+        val port = profile.browserPort
+        val cmd = """
+            if [ -f /opt/vps-browser/shield-firewall.sh ]; then
+                bash /opt/vps-browser/shield-firewall.sh enable-shield "" $port
+            else
+                iptables -D INPUT -p tcp --dport $port -j DROP 2>/dev/null || true
+                iptables -A INPUT -p tcp --dport $port -j DROP 2>/dev/null || true
+            fi
+            echo "🛡️ Escudo de Cortafuegos Activado: Puerto $port protegido con IP Whitelist."
+        """.trimIndent()
+        return executeCommand(profile, cmd)
+    }
+
+    suspend fun installFail2ban(profile: VpsProfile): Result<String> {
+        val cmd = """
+            if command -v apt-get &>/dev/null; then
+                export DEBIAN_FRONTEND=noninteractive
+                apt-get update -y >/dev/null 2>&1 || true
+                apt-get install -y fail2ban >/dev/null 2>&1 || true
+            elif command -v dnf &>/dev/null; then
+                dnf install -y fail2ban >/dev/null 2>&1 || true
+            fi
+
+            mkdir -p /etc/fail2ban/jail.d
+            cat <<'EOF' > /etc/fail2ban/jail.d/vps-browser.local
+[sshd]
+enabled = true
+port = ssh
+maxretry = 5
+findtime = 600
+bantime = 3600
+
+[nginx-http-auth]
+enabled = true
+port = ${profile.browserPort},3001,http,https
+maxretry = 5
+findtime = 600
+bantime = 3600
+EOF
+            systemctl restart fail2ban 2>/dev/null || service fail2ban restart 2>/dev/null || true
+            echo "🛑 FAIL2BAN CONFIGURADO CON ÉXITO:"
+            fail2ban-client status 2>&1 || echo "Fail2ban instalado y activo."
+        """.trimIndent()
+        return executeCommand(profile, cmd)
+    }
+
+    suspend fun getShieldStatus(profile: VpsProfile): Result<String> {
+        val port = profile.browserPort
+        val cmd = """
+            echo "🛡️ REGLAS DE CORTAFUEGOS ACTIVAS (PUERTO $port):"
+            iptables -L INPUT -n --line-numbers 2>/dev/null | grep -E "$port|dpt:$port" || echo "Sin restricciones por IP (Puerto abierto en firewall local)"
+            echo ""
+            echo "🛑 ESTADO FAIL2BAN (ANTI FUERZA BRUTA):"
+            if command -v fail2ban-client &>/dev/null; then
+                fail2ban-client status 2>/dev/null || echo "Fail2ban instalado pero inactivo"
+            else
+                echo "Fail2ban no instalado"
+            fi
+        """.trimIndent()
+        return executeCommand(profile, cmd)
+    }
 }

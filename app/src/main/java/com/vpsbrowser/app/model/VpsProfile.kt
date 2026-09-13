@@ -19,7 +19,10 @@ data class VpsProfile(
     var browserEngine: String = "firefox",
     var useSsl: Boolean = false,
     var touchEmulation: Boolean = true,
-    var resolution: String = "1920x1080"
+    var resolution: String = "1920x1080",
+    var connectionMode: String = "auto", // "auto", "direct", "ssh_tunnel", "cloudflare"
+    var enableIpShield: Boolean = true, // Dynamic IP whitelisting on VPS iptables for direct speed & stealth
+    var enableBbr: Boolean = true // TCP BBR Turbo kernel optimization
 ) {
     var port: Int
         get() = browserPort

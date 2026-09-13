@@ -50,6 +50,8 @@ fun FloatingPillToolbar(
     isKeyboardBarVisible: Boolean,
     latencyMs: Long?,
     isTunnelActive: Boolean,
+    activeRouteName: String = "⚡ Directo",
+    onToggleRoutePicker: () -> Unit = {},
     onBack: () -> Unit,
     onForward: () -> Unit,
     onRefresh: () -> Unit,
@@ -177,7 +179,7 @@ fun FloatingPillToolbar(
                     )
                 }
 
-                // Latency Badge Pill
+                // Latency & Route Badge Pill
                 val statusColor = when {
                     latencyMs == null || latencyMs < 0 -> StatusRed
                     latencyMs < 70 -> StatusGreen
@@ -189,6 +191,10 @@ fun FloatingPillToolbar(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onToggleRoutePicker()
+                        }
                         .background(MaterialTheme.colorScheme.surfaceVariant)
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
@@ -198,11 +204,17 @@ fun FloatingPillToolbar(
                             .clip(CircleShape)
                             .background(statusColor)
                     )
-                    Spacer(modifier = Modifier.width(5.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = if (latencyMs != null && latencyMs >= 0) "${latencyMs}ms" else "Offline",
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = activeRouteName,
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
 

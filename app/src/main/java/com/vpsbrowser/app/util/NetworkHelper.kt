@@ -37,6 +37,41 @@ object NetworkHelper {
         }
     }
 
+    suspend fun getDevicePublicIp(): String? = withContext(Dispatchers.IO) {
+        val providers = listOf(
+            "https://api.ipify.org",
+            "https://icanhazip.com",
+            "https://ifconfig.me/ip"
+        )
+        for (provider in providers) {
+            try {
+                val request = Request.Builder().url(provider).build()
+                httpClient.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val ip = response.body?.string()?.trim()
+                        if (!ip.isNullOrBlank() && ip.matches(Regex("^[0-9a-fA-F:.]+$"))) {
+                            return@withContext ip
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Continue to next provider
+            }
+        }
+        null
+    }
+
+    suspend fun testPortReachability(host: String, port: Int, timeoutMs: Int = 3000): Boolean = withContext(Dispatchers.IO) {
+        try {
+            Socket().use { socket ->
+                socket.connect(InetSocketAddress(host, port), timeoutMs)
+                true
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     suspend fun testHttpHealth(url: String): Pair<Boolean, Long> = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
         try {

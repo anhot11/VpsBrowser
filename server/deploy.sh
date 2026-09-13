@@ -256,9 +256,27 @@ else
     SWAP_TARGET="1G"
 fi
 
-# Ajuste fino de Kernel para mantener procesos en memoria física y swap suave
-sysctl -w vm.swappiness=10 >/dev/null 2>&1 || true
-sysctl -w vm.vfs_cache_pressure=50 >/dev/null 2>&1 || true
+# Ajuste fino de Kernel: TCP BBR Turbo Congestion Control & Low-Latency Tuning
+echo -e "  • ${GREEN}⚡ Optimizando Kernel (TCP BBR Turbo + Latencia Ultrabaja)...${NC}"
+modprobe tcp_bbr 2>/dev/null || true
+mkdir -p /etc/sysctl.d
+cat <<'EOF' > /etc/sysctl.d/99-vpsbrowser-turbo.conf
+# VPS Browser High Performance & Low Latency Streaming
+net.core.default_qdisc = fq
+net.ipv4.tcp_congestion_control = bbr
+net.ipv4.tcp_notsent_lowat = 16384
+net.ipv4.tcp_fastopen = 3
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.tcp_fin_timeout = 15
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+net.ipv4.tcp_rmem = 4096 87380 16777216
+net.ipv4.tcp_wmem = 4096 65536 16777216
+vm.swappiness = 10
+vm.vfs_cache_pressure = 50
+EOF
+sysctl -p /etc/sysctl.d/99-vpsbrowser-turbo.conf >/dev/null 2>&1 || sysctl -w net.ipv4.tcp_congestion_control=bbr >/dev/null 2>&1 || true
+
 
 if [ "$TOTAL_RAM_MB" -lt 2048 ] && [ "$TOTAL_SWAP_MB" -lt 1024 ]; then
     # Proteger VPS con disco pequeño para no agotar almacenamiento de Docker
@@ -429,8 +447,49 @@ else
     fi
 fi
 
-# 6. Apertura de puertos en Firewall (UFW / Firewalld / iptables)
-echo -e "\n${BLUE}[5/7] Configurando cortafuegos (Firewall) para puertos 3000 y 3001...${NC}"
+# 6. Apertura de puertos en Firewall (UFW / Firewalld / iptables) y Escudo Dinámico
+echo -e "\n${BLUE}[5/7] Configurando cortafuegos, Escudo Dinámico de IP y Fail2ban...${NC}"
+mkdir -p "$DEPLOY_DIR"
+cat <<'EOF' > "$DEPLOY_DIR/shield-firewall.sh"
+#!/usr/bin/env bash
+# VPS Browser - Dynamic IP Whitelist Shield & Stealth Port Protection
+ACTION=${1:-status}
+CLIENT_IP=${2:-""}
+PORT=${3:-3000}
+
+case "$ACTION" in
+    allow)
+        if [ -n "$CLIENT_IP" ]; then
+            # Clean existing duplicate rule
+            iptables -D INPUT -p tcp -s "$CLIENT_IP" --dport "$PORT" -j ACCEPT 2>/dev/null || true
+            # Insert at top of chain
+            iptables -I INPUT 1 -p tcp -s "$CLIENT_IP" --dport "$PORT" -j ACCEPT
+            echo "ALLOWED $CLIENT_IP on port $PORT"
+        fi
+        ;;
+    deny)
+        if [ -n "$CLIENT_IP" ]; then
+            iptables -D INPUT -p tcp -s "$CLIENT_IP" --dport "$PORT" -j ACCEPT 2>/dev/null || true
+            echo "REMOVED $CLIENT_IP on port $PORT"
+        fi
+        ;;
+    enable-shield)
+        # Drop external probes to port 3000 unless previously whitelisted
+        iptables -D INPUT -p tcp --dport "$PORT" -j DROP 2>/dev/null || true
+        iptables -A INPUT -p tcp --dport "$PORT" -j DROP 2>/dev/null || true
+        echo "SHIELD_ENABLED_ON_PORT_$PORT"
+        ;;
+    disable-shield)
+        iptables -D INPUT -p tcp --dport "$PORT" -j DROP 2>/dev/null || true
+        echo "SHIELD_DISABLED_ON_PORT_$PORT"
+        ;;
+    status)
+        iptables -L INPUT -n -v --line-numbers 2>/dev/null | grep -E "$PORT|dpt:$PORT" || echo "Sin reglas activas en puerto $PORT"
+        ;;
+esac
+EOF
+chmod +x "$DEPLOY_DIR/shield-firewall.sh"
+
 if command -v ufw &>/dev/null && ufw status | grep -qw "active"; then
     ufw allow 3000/tcp comment 'VPS Browser HTTP' >/dev/null 2>&1 || true
     ufw allow 3001/tcp comment 'VPS Browser HTTPS' >/dev/null 2>&1 || true
@@ -446,6 +505,34 @@ elif command -v iptables &>/dev/null; then
     echo -e "  • ${GREEN}✓ Reglas de iptables añadidas para puertos 3000 y 3001.${NC}"
 else
     echo -e "  • ${GREEN}✓ No se detectó cortafuegos activo que bloquee los puertos.${NC}"
+fi
+
+# Instalación y configuración preventiva de Fail2ban (Anti Brute-Force)
+if command -v apt-get &>/dev/null; then
+    apt-get install -y fail2ban >/dev/null 2>&1 || true
+elif command -v dnf &>/dev/null; then
+    dnf install -y fail2ban >/dev/null 2>&1 || true
+fi
+
+if command -v fail2ban-client &>/dev/null; then
+    mkdir -p /etc/fail2ban/jail.d
+    cat <<'EOF' > /etc/fail2ban/jail.d/vps-browser.local
+[sshd]
+enabled = true
+port = ssh
+maxretry = 5
+findtime = 600
+bantime = 3600
+
+[nginx-http-auth]
+enabled = true
+port = 3000,3001,http,https
+maxretry = 5
+findtime = 600
+bantime = 3600
+EOF
+    systemctl restart fail2ban 2>/dev/null || service fail2ban restart 2>/dev/null || true
+    echo -e "  • ${GREEN}✓ Fail2ban activo (Protección contra fuerza bruta en SSH y puerto 3000).${NC}"
 fi
 
 # 7. Preparación de carpeta, políticas ultra-ligeras de Firefox y docker-compose.yml
@@ -541,6 +628,10 @@ server {
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
         proxy_read_timeout 86400;
+        proxy_send_timeout 86400;
+        proxy_buffering off;
+        proxy_cache off;
+        tcp_nodelay on;
     }
 }
 EOF

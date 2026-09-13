@@ -165,7 +165,10 @@ object SshDeployer {
                 browserPassword = detectedPassword,
                 browserEngine = if (deployMode.equals("native", ignoreCase = true)) "firefox-native" else "firefox",
                 useSsl = false,
-                touchEmulation = true
+                touchEmulation = true,
+                connectionMode = "auto",
+                enableIpShield = true,
+                enableBbr = true
             )
 
             Result.success(profile)
