@@ -1,25 +1,25 @@
 version: '3.8'
 
 services:
-  vps-browser:
-    image: lscr.io/linuxserver/chromium:latest
-    container_name: vps-browser
+  vps-firefox:
+    image: lscr.io/linuxserver/firefox:latest
+    container_name: vps-firefox
     security_opt:
-      - seccomp:unconfined # Required for Chromium sandboxing
+      - seccomp:unconfined
     environment:
       - PUID=1000
       - PGID=1000
       - TZ=Etc/UTC
-      - CHROME_CLI=https://www.google.com/
-      # Change CUSTOM_USER and PASSWORD for authentication
+      # Authentication for accessing the remote Firefox browser
       - CUSTOM_USER=admin
       - PASSWORD=ChangeMeSecure123!
     volumes:
       - ./config:/config
     ports:
-      # Port 3000 for HTTP (Web GUI / Browser stream)
+      # Port 3000 for HTTP (KasmVNC Web GUI)
       - "3000:3000"
       # Port 3001 for HTTPS (Self-signed SSL)
       - "3001:3001"
-    shm_size: "2gb" # Chromium requires shared memory for smooth rendering
+    shm_size: "2gb" # Firefox shared memory for rendering and media
     restart: unless-stopped
+

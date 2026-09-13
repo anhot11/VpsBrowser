@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  vps-chromium:
+    image: lscr.io/linuxserver/chromium:latest
+    container_name: vps-chromium
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      - CHROME_CLI=https://www.google.com/
+      - CUSTOM_USER=admin
+      - PASSWORD=ChangeMeSecure123!
+    volumes:
+      - ./config-chromium:/config
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+    shm_size: "2gb"
+    restart: unless-stopped

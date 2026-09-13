@@ -1,9 +1,10 @@
 # 🌐 VPS Browser (Android Client + Cloud Browser Server)
 
-**VPS Browser** te permite navegar por Internet de forma segura y privada desde tu teléfono Android, ejecutando el navegador (Chromium con aceleración WebRTC/WebSocket) directamente en tu propio servidor VPS. 
+**VPS Browser** te permite navegar por Internet de forma segura y privada desde tu teléfono Android, ejecutando el navegador (Firefox o Chromium con aceleración KasmVNC / WebSockets) directamente en tu propio servidor VPS mediante la imagen oficial recomendada de **LinuxServer.io** (`lscr.io/linuxserver/firefox`). 
 
 De esta forma:
 - El navegador real corre en tu VPS (tu IP real del teléfono nunca se expone).
+- Mucho más ligero en consumo de memoria RAM en VPS modestas gracias a Firefox (`linuxserver/firefox`).
 - Puedes acceder a páginas de escritorio, paneles de administración, herramientas de desarrollo (F12 DevTools).
 - Cuentas con emulación táctil directa o modo Trackpad/Ratón virtual con clic derecho y accesos rápidos (Ctrl, Alt, Esc, Tab).
 - Monitoreo de latencia y ping en tiempo real en la aplicación.
@@ -32,13 +33,15 @@ cd server
 sudo ./deploy.sh
 ```
 
-El script instalará Docker automáticamente (si no lo tienes), generará una contraseña segura y levantará el contenedor de Chromium en el puerto **3000** (HTTP) y **3001** (HTTPS).
+El script instalará Docker automáticamente (si no lo tienes), generará una contraseña segura y levantará el contenedor de **Firefox (`linuxserver/firefox`)** en el puerto **3000** (HTTP) y **3001** (HTTPS).
 
 O si prefieres usar Docker Compose manualmente:
 ```bash
 cd server
 docker compose up -d
 ```
+
+*(Opcional: Si prefieres Chromium en lugar de Firefox, puedes usar `docker compose -f docker-compose.chromium.yml up -d`)*.
 
 ---
 
