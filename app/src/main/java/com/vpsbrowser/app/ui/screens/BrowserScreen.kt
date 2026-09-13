@@ -32,8 +32,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mouse
 import androidx.compose.material.icons.filled.Search
@@ -44,6 +46,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -278,14 +281,35 @@ fun BrowserScreen(
                             Spacer(modifier = Modifier.size(16.dp))
                             Text("Estableciendo túnel SSH cifrado...", color = Color.White)
                         } else {
-                            Text(
-                                text = connectionError ?: "Error de conexión",
-                                color = MaterialTheme.colorScheme.error,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
+                            SelectionContainer {
+                                Text(
+                                    text = connectionError ?: "Error de conexión",
+                                    color = MaterialTheme.colorScheme.error,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
                             Spacer(modifier = Modifier.size(16.dp))
-                            Button(onClick = { connect() }) {
-                                Text("Reintentar Conexión")
+                            Row(
+                                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Button(onClick = { connect() }) {
+                                    Text("Reintentar Conexión")
+                                }
+                                if (connectionError != null) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                            val clip = ClipData.newPlainText("Connection Error", connectionError)
+                                            clipboard.setPrimaryClip(clip)
+                                            Toast.makeText(context, "Error copiado al portapapeles", Toast.LENGTH_SHORT).show()
+                                        }
+                                    ) {
+                                        Icon(Icons.Default.ContentCopy, contentDescription = "Copiar error", modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.size(4.dp))
+                                        Text("Copiar Error")
+                                    }
+                                }
                             }
                         }
                     }
