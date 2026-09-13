@@ -1,0 +1,42 @@
+<resources>
+    <string name="app_name">VPS Browser</string>
+    <string name="action_back">Atrás</string>
+    <string name="action_forward">Adelante</string>
+    <string name="action_refresh">Recargar</string>
+    <string name="action_profiles">Servidores VPS</string>
+    <string name="action_settings">Ajustes</string>
+    <string name="action_fullscreen">Pantalla completa</string>
+    <string name="action_keyboard">Teclado</string>
+    <string name="action_mouse_mode">Modo Ratón</string>
+    <string name="action_touch_mode">Modo Táctil</string>
+    <string name="action_reconnect">Reconectar</string>
+    <string name="action_new_tab">Nueva pestaña</string>
+
+    <string name="title_profiles">Servidores VPS</string>
+    <string name="title_settings">Ajustes</string>
+    <string name="title_add_profile">Añadir Servidor VPS</string>
+    <string name="title_edit_profile">Editar Servidor VPS</string>
+
+    <string name="label_profile_name">Nombre (ej. Mi VPS Alemania)</string>
+    <string name="label_vps_host">Dirección IP o Host</string>
+    <string name="label_vps_port">Puerto (por defecto 3000 o 6901)</string>
+    <string name="label_vps_password">Contraseña / Token de acceso</string>
+    <string name="label_use_ssl">Usar HTTPS / WSS</string>
+    <string name="label_touch_emulation">Emulación táctil nativa</string>
+
+    <string name="status_connected">Conectado a VPS</string>
+    <string name="status_connecting">Conectando al navegador VPS...</string>
+    <string name="status_disconnected">Sin conexión al VPS</string>
+    <string name="status_no_profile">Configura tu VPS para comenzar</string>
+
+    <string name="omnibar_hint">Buscar o escribir URL en el VPS...</string>
+    <string name="btn_save">Guardar</string>
+    <string name="btn_cancel">Cancelar</string>
+    <string name="btn_connect">Conectar</string>
+    <string name="btn_delete">Eliminar</string>
+    <string name="btn_add_server">Añadir Servidor</string>
+
+    <string name="pref_default_search">Motor de búsqueda</string>
+    <string name="pref_resolution">Resolución remota</string>
+    <string name="pref_audio">Transmitir audio remoto</string>
+</resources>

@@ -1,0 +1,362 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/mainLayout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background">
+
+    <!-- Top App Bar / Omnibar -->
+    <LinearLayout
+        android:id="@+id/topBar"
+        android:layout_width="0dp"
+        android:layout_height="56dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="8dp"
+        android:background="@color/surface"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <ImageButton
+            android:id="@+id/btnServers"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_server"
+            android:contentDescription="@string/action_profiles"
+            app:tint="@color/on_surface" />
+
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="1"
+            android:layout_marginHorizontal="8dp"
+            android:background="@drawable/bg_omnibar"
+            android:paddingHorizontal="12dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <ImageView
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:src="@drawable/ic_search"
+                    app:tint="@color/on_surface_muted" />
+
+                <EditText
+                    android:id="@+id/etOmnibar"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:layout_marginStart="8dp"
+                    android:background="@null"
+                    android:hint="@string/omnibar_hint"
+                    android:textColor="@color/on_surface"
+                    android:textColorHint="@color/on_surface_muted"
+                    android:textSize="14sp"
+                    android:inputType="textUri"
+                    android:imeOptions="actionGo"
+                    android:singleLine="true" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <ImageButton
+            android:id="@+id/btnRefresh"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_refresh"
+            android:contentDescription="@string/action_refresh"
+            app:tint="@color/on_surface" />
+
+    </LinearLayout>
+
+    <!-- Top Progress Indicator -->
+    <ProgressBar
+        android:id="@+id/progressBar"
+        style="@style/Widget.AppCompat.ProgressBar.Horizontal"
+        android:layout_width="0dp"
+        android:layout_height="3dp"
+        android:indeterminate="false"
+        android:max="100"
+        android:visibility="gone"
+        android:progressTint="@color/primary"
+        app:layout_constraintTop_toBottomOf="@id/topBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Browser & Stream Container -->
+    <FrameLayout
+        android:id="@+id/browserContainer"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toBottomOf="@id/progressBar"
+        app:layout_constraintBottom_toTopOf="@id/desktopKeyBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <WebView
+            android:id="@+id/remoteWebView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <!-- Status / Disconnected Banner Overlay -->
+        <LinearLayout
+            android:id="@+id/connectionOverlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="24dp"
+            android:background="#DD12161A"
+            android:visibility="gone">
+
+            <ImageView
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:src="@drawable/ic_server"
+                app:tint="@color/status_disconnected" />
+
+            <TextView
+                android:id="@+id/tvStatusMessage"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="@string/status_no_profile"
+                android:textColor="@color/on_surface"
+                android:textSize="16sp"
+                android:textAlignment="center" />
+
+            <Button
+                android:id="@+id/btnConnectAction"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="@string/btn_connect"
+                android:backgroundTint="@color/primary" />
+        </LinearLayout>
+
+        <!-- Latency & Status Pill Overlay -->
+        <LinearLayout
+            android:id="@+id/latencyBadge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|end"
+            android:layout_margin="12dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/bg_badge"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="4dp">
+
+            <View
+                android:id="@+id/statusIndicatorDot"
+                android:layout_width="8dp"
+                android:layout_height="8dp"
+                android:background="@color/status_connecting" />
+
+            <TextView
+                android:id="@+id/tvPing"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:text="VPS..."
+                android:textColor="@color/on_surface"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <!-- Virtual Mouse Trackpad Overlay (Visible when Mouse Mode is Active) -->
+        <FrameLayout
+            android:id="@+id/virtualMouseOverlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone">
+
+            <!-- Virtual Mouse Cursor Pointer -->
+            <ImageView
+                android:id="@+id/ivMouseCursor"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_mouse"
+                app:tint="@color/accent_blue"
+                android:visibility="gone" />
+
+            <!-- Trackpad Action Bar Floating at Bottom Right -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom|end"
+                android:layout_margin="16dp"
+                android:orientation="horizontal"
+                android:background="@drawable/bg_badge"
+                android:padding="6dp">
+
+                <Button
+                    android:id="@+id/btnLeftClick"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:layout_width="60dp"
+                    android:layout_height="40dp"
+                    android:text="L"
+                    android:textSize="12sp" />
+
+                <Button
+                    android:id="@+id/btnRightClick"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:layout_width="60dp"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="6dp"
+                    android:text="R"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </FrameLayout>
+
+    </FrameLayout>
+
+    <!-- Desktop Special Keys Bar (Optional / Toggleable) -->
+    <HorizontalScrollView
+        android:id="@+id/desktopKeyBar"
+        android:layout_width="0dp"
+        android:layout_height="42dp"
+        android:background="@color/surface_variant"
+        android:scrollbars="none"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/bottomBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="4dp">
+
+            <Button
+                android:id="@+id/keyEsc"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="Esc"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/keyTab"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="Tab"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/keyCtrl"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="Ctrl"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/keyAlt"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="Alt"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/keyEnter"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="Enter"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/keyF12"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="F12 (DevTools)"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </HorizontalScrollView>
+
+    <!-- Bottom Navigation Bar -->
+    <LinearLayout
+        android:id="@+id/bottomBar"
+        android:layout_width="0dp"
+        android:layout_height="52dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@color/surface"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <ImageButton
+            android:id="@+id/btnBack"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="?attr/selectableItemBackground"
+            android:src="@drawable/ic_arrow_back"
+            android:contentDescription="@string/action_back"
+            app:tint="@color/on_surface" />
+
+        <ImageButton
+            android:id="@+id/btnForward"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="?attr/selectableItemBackground"
+            android:src="@drawable/ic_arrow_forward"
+            android:contentDescription="@string/action_forward"
+            app:tint="@color/on_surface" />
+
+        <ImageButton
+            android:id="@+id/btnToggleInputMode"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="?attr/selectableItemBackground"
+            android:src="@drawable/ic_touch"
+            android:contentDescription="@string/action_touch_mode"
+            app:tint="@color/primary" />
+
+        <ImageButton
+            android:id="@+id/btnToggleKeyboard"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="?attr/selectableItemBackground"
+            android:src="@drawable/ic_keyboard"
+            android:contentDescription="@string/action_keyboard"
+            app:tint="@color/on_surface" />
+
+        <ImageButton
+            android:id="@+id/btnFullscreen"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="?attr/selectableItemBackground"
+            android:src="@drawable/ic_fullscreen"
+            android:contentDescription="@string/action_fullscreen"
+            app:tint="@color/on_surface" />
+
+        <ImageButton
+            android:id="@+id/btnSettings"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="?attr/selectableItemBackground"
+            android:src="@drawable/ic_settings"
+            android:contentDescription="@string/action_settings"
+            app:tint="@color/on_surface" />
+
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
