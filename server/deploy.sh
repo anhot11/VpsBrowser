@@ -166,6 +166,36 @@ cd "$DEPLOY_DIR"
 
 PASS=$(openssl rand -hex 8)
 
+cat <<'EOF' > policies.json
+{
+  "policies": {
+    "DisableTelemetry": true,
+    "DisableFirefoxStudies": true,
+    "DisablePocket": true,
+    "DisableFirefoxAccounts": true,
+    "EnableTrackingProtection": {
+      "Value": true,
+      "Locked": true,
+      "Cryptomining": true,
+      "Fingerprinting": true,
+      "EmailTracking": true
+    },
+    "ExtensionSettings": {
+      "uBlock0@raymondhill.net": {
+        "installation_mode": "normal_installed",
+        "install_url": "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi"
+      }
+    },
+    "Preferences": {
+      "privacy.donottrackheader.enabled": true,
+      "dom.security.https_only_mode": true,
+      "privacy.query_stripping.enabled": true,
+      "network.cookie.cookieBehavior": 5
+    }
+  }
+}
+EOF
+
 cat <<EOF > docker-compose.yml
 version: '3.8'
 
@@ -183,6 +213,8 @@ services:
       - PASSWORD=$PASS
     volumes:
       - ./config:/config
+      - ./policies.json:/usr/lib/firefox/distribution/policies.json:ro
+      - ./policies.json:/etc/firefox/policies/policies.json:ro
     ports:
       - "3000:3000"
       - "3001:3001"
@@ -190,7 +222,8 @@ services:
     restart: unless-stopped
 EOF
 
-echo -e "  • ${GREEN}✓ Configuración generada en $DEPLOY_DIR/docker-compose.yml${NC}"
+echo -e "  • ${GREEN}✓ Configuración generada en $DEPLOY_DIR/docker-compose.yml (con uBlock Origin y hardening)${NC}"
+
 
 # 8. Despliegue del Contenedor
 echo -e "\n${BLUE}[7/7] Descargando imagen y levantando el contenedor Firefox...${NC}"

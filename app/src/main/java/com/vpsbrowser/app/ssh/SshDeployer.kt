@@ -125,8 +125,12 @@ object SshDeployer {
             val profile = VpsProfile(
                 name = "VPS Firefox ($host)",
                 host = host,
-                port = 3000,
-                password = detectedPassword,
+                sshPort = port,
+                sshUser = user,
+                sshPassword = password,
+                useSshTunnel = true,
+                browserPort = 3000,
+                browserPassword = detectedPassword,
                 useSsl = false,
                 touchEmulation = true
             )

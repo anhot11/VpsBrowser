@@ -15,11 +15,13 @@ services:
       - PASSWORD=ChangeMeSecure123!
     volumes:
       - ./config:/config
+      - ./policies.json:/usr/lib/firefox/distribution/policies.json:ro
+      - ./policies.json:/etc/firefox/policies/policies.json:ro
     ports:
-      # Port 3000 for HTTP (KasmVNC Web GUI)
+      # Port 3000 for KasmVNC Web GUI (Direct & SSH Tunnel)
       - "3000:3000"
-      # Port 3001 for HTTPS (Self-signed SSL)
       - "3001:3001"
     shm_size: "2gb" # Firefox shared memory for rendering and media
+
     restart: unless-stopped
 
