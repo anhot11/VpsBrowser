@@ -82,10 +82,15 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.vpsbrowser.app.engine.FirefoxTurboBrowserView
+import com.vpsbrowser.app.engine.GeckoBrowserView
+import com.vpsbrowser.app.engine.VpsEngineController
+import com.vpsbrowser.app.engine.VpsEngineType
 import com.vpsbrowser.app.model.VpsProfile
 import com.vpsbrowser.app.ssh.SshRemoteLifecycle
 import com.vpsbrowser.app.ssh.SshTunnelManager
 import com.vpsbrowser.app.ui.components.DesktopAccessoryBar
+import com.vpsbrowser.app.ui.components.EngineControlDialog
 import com.vpsbrowser.app.ui.components.FloatingPillToolbar
 import com.vpsbrowser.app.ui.theme.DarkBorder
 import com.vpsbrowser.app.ui.theme.StatusGreen
@@ -111,7 +116,9 @@ fun BrowserScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var webViewRef by remember { mutableStateOf<WebView?>(null) }
+    var engineType by remember { mutableStateOf(VpsEngineType.fromId(profile.appEngine)) }
+    var engineController by remember { mutableStateOf<VpsEngineController?>(null) }
+    var showEngineDialog by remember { mutableStateOf(false) }
     var currentUrl by remember { mutableStateOf("") }
     var omnibarText by remember { mutableStateOf("") }
     var isOmnibarVisible by remember { mutableStateOf(false) }
@@ -159,7 +166,7 @@ fun BrowserScreen(
                         activeRouteName = "☁️ Cloudflare"
                         val cfUrl = profile.cloudflareUrl.trimEnd('/')
                         currentUrl = cfUrl
-                        webViewRef?.loadUrl(cfUrl)
+                        engineController?.loadUrl(cfUrl)
                     } else {
                         connectionError = "No hay URL de Cloudflare Tunnel configurada en este perfil."
                     }
@@ -173,7 +180,7 @@ fun BrowserScreen(
                         isTunnelActive = true
                         activeRouteName = "🔒 Túnel SSH"
                         currentUrl = localUrl
-                        webViewRef?.loadUrl(localUrl)
+                        engineController?.loadUrl(localUrl)
                     }.onFailure { err ->
                         isTunnelActive = false
                         connectionError = "Fallo al crear túnel SSH: ${err.message}."
@@ -193,7 +200,7 @@ fun BrowserScreen(
                     activeRouteName = "⚡ Directo"
                     val directUrl = profile.getDirectUrl()
                     currentUrl = directUrl
-                    webViewRef?.loadUrl(directUrl)
+                    engineController?.loadUrl(directUrl)
                 }
                 else -> { // "auto": Fast-Path Inteligente
                     activeRouteName = "⚡ Fast-Path..."
@@ -214,7 +221,7 @@ fun BrowserScreen(
                         activeRouteName = "⚡ Directo"
                         val directUrl = profile.getDirectUrl()
                         currentUrl = directUrl
-                        webViewRef?.loadUrl(directUrl)
+                        engineController?.loadUrl(directUrl)
                         directConnected = true
                     }
 
@@ -228,7 +235,7 @@ fun BrowserScreen(
                             isTunnelActive = true
                             activeRouteName = "🔒 Túnel SSH"
                             currentUrl = localUrl
-                            webViewRef?.loadUrl(localUrl)
+                            engineController?.loadUrl(localUrl)
                         }.onFailure {
                             // Respaldo automático 2: Túnel Cloudflare
                             if (profile.cloudflareUrl.isNotBlank()) {
@@ -236,7 +243,7 @@ fun BrowserScreen(
                                 activeRouteName = "☁️ Cloudflare"
                                 val cfUrl = profile.cloudflareUrl.trimEnd('/')
                                 currentUrl = cfUrl
-                                webViewRef?.loadUrl(cfUrl)
+                                engineController?.loadUrl(cfUrl)
                             } else {
                                 isTunnelActive = false
                                 connectionError = "No se pudo conectar de forma directa ni por túnel SSH. Verifica que tu VPS esté activa."
@@ -271,24 +278,11 @@ fun BrowserScreen(
     DisposableEffect(Unit) {
         onDispose {
             SshTunnelManager.stopTunnel()
-            webViewRef?.destroy()
         }
     }
 
     fun dispatchClick(x: Float, y: Float, isRightClick: Boolean) {
-        val wv = webViewRef ?: return
-        val downTime = System.currentTimeMillis()
-        if (!isRightClick) {
-            val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0)
-            val up = MotionEvent.obtain(downTime, downTime + 40, MotionEvent.ACTION_UP, x, y, 0)
-            wv.dispatchTouchEvent(down)
-            wv.dispatchTouchEvent(up)
-            down.recycle()
-            up.recycle()
-        } else {
-            val js = "var el = document.elementFromPoint($x, $y); if(el) { el.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, clientX: $x, clientY: $y})); }"
-            wv.evaluateJavascript(js, null)
-        }
+        engineController?.dispatchClick(x, y, isRightClick)
     }
 
     fun navigateTo(input: String) {
@@ -301,83 +295,50 @@ fun BrowserScreen(
             searchEngineUrl + URLEncoder.encode(clean, "UTF-8")
         }
 
-        webViewRef?.loadUrl(target)
+        currentUrl = target
+        engineController?.loadUrl(target)
         isOmnibarVisible = false
     }
 
     Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
-        // WebView
-        AndroidView(
-            factory = { ctx ->
-                WebView(ctx).apply {
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-
-                    settings.apply {
-                        javaScriptEnabled = true
-                        domStorageEnabled = true
-                        databaseEnabled = true
-                        mediaPlaybackRequiresUserGesture = false
-                        useWideViewPort = true
-                        loadWithOverviewMode = true
-                        setSupportZoom(true)
-                        builtInZoomControls = true
-                        displayZoomControls = false
-                        allowFileAccess = true
-                        allowContentAccess = true
-                        cacheMode = WebSettings.LOAD_DEFAULT
-                    }
-
-                    webChromeClient = object : WebChromeClient() {
-                        override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                            loadProgress = newProgress
+        // Unified Manipulable Firefox Engine (🦊 Mozilla GeckoView or ⚡ Firefox Turbo)
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (engineType == VpsEngineType.GECKO) {
+                GeckoBrowserView(
+                    url = currentUrl,
+                    profile = profile,
+                    onProgress = { loadProgress = it },
+                    onUrlChanged = { newUrl ->
+                        currentUrl = newUrl
+                        omnibarText = newUrl
+                    },
+                    onEngineReady = { ctrl ->
+                        engineController = ctrl
+                        if (currentUrl.isNotBlank()) {
+                            ctrl.loadUrl(currentUrl)
                         }
-                        override fun onPermissionRequest(request: PermissionRequest?) {
-                            request?.grant(request.resources)
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                FirefoxTurboBrowserView(
+                    url = currentUrl,
+                    profile = profile,
+                    onProgress = { loadProgress = it },
+                    onUrlChanged = { newUrl ->
+                        currentUrl = newUrl
+                        omnibarText = newUrl
+                    },
+                    onEngineReady = { ctrl ->
+                        engineController = ctrl
+                        if (currentUrl.isNotBlank()) {
+                            ctrl.loadUrl(currentUrl)
                         }
-                    }
-
-                    webViewClient = object : WebViewClient() {
-                        override fun onPageFinished(view: WebView?, url: String?) {
-                            url?.let { omnibarText = it }
-                        }
-
-                        override fun onReceivedHttpAuthRequest(
-                            view: WebView?,
-                            handler: HttpAuthHandler?,
-                            host: String?,
-                            realm: String?
-                        ) {
-                            val user = profile.browserUser.ifBlank { "admin" }
-                            val pass = profile.browserPassword
-
-                            // If we have credentials saved and haven't tried yet, auto-authenticate
-                            if (pass.isNotBlank() && authAttempts == 0) {
-                                authAttempts++
-                                view?.setHttpAuthUsernamePassword(host, realm, user, pass)
-                                handler?.proceed(user, pass)
-                            } else {
-                                // No password or previous attempt failed: ask user
-                                pendingAuthHandler = handler
-                                pendingAuthHost = host ?: ""
-                                pendingAuthRealm = realm ?: ""
-                                authUsername = user
-                                authPassword = pass
-                                showAuthDialog = true
-                            }
-                        }
-                    }
-
-                    webViewRef = this
-                    if (currentUrl.isNotBlank()) {
-                        loadUrl(currentUrl)
-                    }
-                }
-            },
-            modifier = Modifier.fillMaxSize()
-        )
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
 
         // Top Progress Line
         if (loadProgress in 1..99) {
@@ -502,10 +463,9 @@ fun BrowserScreen(
                     else -> null
                 }
                 if (code != null) {
-                    webViewRef?.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
-                    webViewRef?.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code))
+                    engineController?.dispatchKeyEvent(code)
                 } else if (key.contains("F12")) {
-                    webViewRef?.evaluateJavascript("window.dispatchEvent(new KeyboardEvent('keydown', {'key': 'F12', 'code': 'F12', 'keyCode': 123}));", null)
+                    engineController?.evaluateJavascript("window.dispatchEvent(new KeyboardEvent('keydown', {'key': 'F12', 'code': 'F12', 'keyCode': 123}));", null)
                 }
             },
             onSendClipboardToVps = {
@@ -513,7 +473,7 @@ fun BrowserScreen(
                 val text = cm?.primaryClip?.getItemAt(0)?.text?.toString()
                 if (!text.isNullOrBlank()) {
                     val safeText = text.replace("'", "\\'")
-                    webViewRef?.evaluateJavascript("navigator.clipboard.writeText('$safeText');", null)
+                    engineController?.evaluateJavascript("navigator.clipboard.writeText('$safeText');", null)
                     Toast.makeText(context, "Portapapeles enviado al navegador VPS", Toast.LENGTH_SHORT).show()
                 }
             },
@@ -570,14 +530,16 @@ fun BrowserScreen(
             latencyMs = latencyMs,
             isTunnelActive = isTunnelActive,
             activeRouteName = activeRouteName,
+            currentEngineBadge = engineType.badge,
+            onToggleEnginePicker = { showEngineDialog = true },
             onToggleRoutePicker = { showRouteDialog = true },
             onBack = {
-                if (webViewRef?.canGoBack() == true) webViewRef?.goBack()
+                if (engineController?.canGoBack() == true) engineController?.goBack()
             },
             onForward = {
-                if (webViewRef?.canGoForward() == true) webViewRef?.goForward()
+                if (engineController?.canGoForward() == true) engineController?.goForward()
             },
-            onRefresh = { webViewRef?.reload() },
+            onRefresh = { engineController?.reload() },
             onToggleInputMode = { isMouseMode = !isMouseMode },
             onToggleKeyboardBar = { isKeyboardBarVisible = !isKeyboardBarVisible },
             onToggleFullscreen = { isFullscreen = !isFullscreen },
@@ -793,8 +755,8 @@ fun BrowserScreen(
                             profile.browserUser = user
                             profile.browserPassword = pass
                             onSaveProfile(profile)
-                            webViewRef?.setHttpAuthUsernamePassword(pendingAuthHost, pendingAuthRealm, user, pass)
                             pendingAuthHandler?.proceed(user, pass)
+                            engineController?.reload()
                             showAuthDialog = false
                         }
                     ) {
@@ -811,6 +773,22 @@ fun BrowserScreen(
                         Text("Cancelar")
                     }
                 }
+            )
+        }
+
+        // Engine Control & Manipulation Dialog
+        if (showEngineDialog) {
+            EngineControlDialog(
+                currentEngine = engineType,
+                onSelectEngine = { newEngine ->
+                    engineType = newEngine
+                    profile.appEngine = newEngine.id
+                    onSaveProfile(profile)
+                    showEngineDialog = false
+                },
+                controller = engineController,
+                latencyMs = latencyMs,
+                onDismiss = { showEngineDialog = false }
             )
         }
     }

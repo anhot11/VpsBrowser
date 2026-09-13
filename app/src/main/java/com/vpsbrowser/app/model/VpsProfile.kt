@@ -22,7 +22,8 @@ data class VpsProfile(
     var resolution: String = "1920x1080",
     var connectionMode: String = "auto", // "auto", "direct", "ssh_tunnel", "cloudflare"
     var enableIpShield: Boolean = true, // Dynamic IP whitelisting on VPS iptables for direct speed & stealth
-    var enableBbr: Boolean = true // TCP BBR Turbo kernel optimization
+    var enableBbr: Boolean = true, // TCP BBR Turbo kernel optimization
+    var appEngine: String = "gecko" // "gecko" (GeckoView Firefox Engine) or "turbo" (Firefox Turbo Client)
 ) {
     var port: Int
         get() = browserPort

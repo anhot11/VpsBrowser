@@ -256,7 +256,8 @@ fun ProfilesScreen(
                         useSshTunnel = useTunnel,
                         connectionMode = target.connectionMode,
                         enableIpShield = target.enableIpShield,
-                        enableBbr = target.enableBbr
+                        enableBbr = target.enableBbr,
+                        appEngine = target.appEngine
                     )
                     onSaveProfile(updated)
                     isAddingNew = false

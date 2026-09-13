@@ -11,12 +11,26 @@ android {
         applicationId = "com.vpsbrowser.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 12
-        versionName = "2.3.0"
+        versionCode = 13
+        versionName = "2.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
+        }
+    }
+
+    androidResources {
+        noCompress.add("ja")
+    }
+
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "META-INF/DEPENDENCIES"
+        }
+        jniLibs {
+            useLegacyPackaging = true
         }
     }
 
@@ -66,6 +80,9 @@ dependencies {
     implementation("com.google.code.gson:gson:2.10.1")
     implementation("com.github.mwiede:jsch:0.2.20")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
+    // Mozilla GeckoView - Official Embedded Firefox Browser Engine
+    implementation("org.mozilla.geckoview:geckoview-omni:120.0.20231129155202")
 
     // Jetpack Compose & Material 3
     val composeBom = platform("androidx.compose:compose-bom:2024.06.00")

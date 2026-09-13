@@ -36,6 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vpsbrowser.app.ui.theme.DarkBorder
@@ -51,6 +52,8 @@ fun FloatingPillToolbar(
     latencyMs: Long?,
     isTunnelActive: Boolean,
     activeRouteName: String = "⚡ Directo",
+    currentEngineBadge: String = "🦊 GECKO",
+    onToggleEnginePicker: () -> Unit = {},
     onToggleRoutePicker: () -> Unit = {},
     onBack: () -> Unit,
     onForward: () -> Unit,
@@ -176,6 +179,26 @@ fun FloatingPillToolbar(
                         contentDescription = "Pantalla Completa",
                         tint = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                // Engine Badge Pill (🦊 GECKO / ⚡ TURBO)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onToggleEnginePicker()
+                        }
+                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f))
+                        .padding(horizontal = 7.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = currentEngineBadge,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
 
