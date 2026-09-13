@@ -77,39 +77,42 @@ object SshRemoteLifecycle {
     }
 
     suspend fun restartContainer(profile: VpsProfile): Result<String> {
-        return executeCommand(profile, "cd /opt/vps-browser && docker compose restart")
+        val cmd = "if systemctl is-active --quiet vps-browser 2>/dev/null; then systemctl restart vps-browser vps-tunnel 2>/dev/null; echo 'Servicios nativos reiniciados'; elif [ -d /opt/vps-browser ]; then cd /opt/vps-browser && (docker compose restart 2>/dev/null || docker restart vps-firefox vps-tunnel); fi"
+        return executeCommand(profile, cmd)
     }
 
     suspend fun updateContainer(profile: VpsProfile): Result<String> {
-        return executeCommand(profile, "cd /opt/vps-browser && docker compose pull && docker compose up -d")
+        val cmd = "if systemctl is-active --quiet vps-browser 2>/dev/null; then apt-get update -y && apt-get install --only-upgrade -y firefox xvfb openbox novnc websockify 2>/dev/null || true; systemctl restart vps-browser; echo 'Paquetes nativos actualizados'; elif [ -d /opt/vps-browser ]; then cd /opt/vps-browser && docker compose pull && docker compose up -d; fi"
+        return executeCommand(profile, cmd)
     }
 
     suspend fun clearSessionCache(profile: VpsProfile): Result<String> {
-        // Clears temporary caches while maintaining container integrity
-        return executeCommand(profile, "rm -rf /opt/vps-browser/config/.cache/* 2>/dev/null || true")
+        // Clears temporary caches while maintaining container / service integrity
+        return executeCommand(profile, "rm -rf /opt/vps-browser/config/.cache/* ~/.cache/mozilla/* /tmp/.X11-unix/* 2>/dev/null || true")
     }
 
     suspend fun auditSecurity(profile: VpsProfile): Result<String> {
         val auditCmd = """
             echo "🛡️ INFORME DE AUDITORÍA DE SEGURIDAD:"
-            echo -n "• Contenedor Docker: " && (docker inspect -f '{{.State.Status}}' vps-firefox 2>/dev/null || echo "No instalado")
-            echo -n "• Autenticación Nginx: " && (if [ -f /opt/vps-browser/docker-compose.yml ] && grep -q 'PASSWORD=' /opt/vps-browser/docker-compose.yml; then echo "ACTIVA (Contraseña protegida)"; else echo "INSEGURA (Sin contraseña)"; fi)
-            echo -n "• Hardening de Privacidad: " && (if grep -q 'DisableTelemetry' /opt/vps-browser/policies.json 2>/dev/null; then echo "PROTEGIDO (Telemetría bloqueada)"; else echo "INCOMPLETO"; fi)
-            echo -n "• Extensión uBlock Origin: " && (if grep -q 'uBlock0@raymondhill.net' /opt/vps-browser/policies.json 2>/dev/null; then echo "INSTALADA Y ACTIVA"; else echo "NO ENCONTRADA"; fi)
+            echo -n "• Modo de Ejecución: " && (if systemctl is-active --quiet vps-browser 2>/dev/null; then echo "⚡ NATIVO VPS (Systemd / Sin Docker)"; elif docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qw "vps-firefox"; then echo "🐳 DOCKER (Contenedor Aislado)"; else echo "No detectado"; fi)
+            echo -n "• Estado del Servicio: " && (if systemctl is-active --quiet vps-browser 2>/dev/null; then echo "ACTIVO (systemd)"; else docker inspect -f '{{.State.Status}}' vps-firefox 2>/dev/null || echo "No iniciado"; fi)
+            echo -n "• Autenticación Nginx: " && (if [ -f /etc/nginx/.htpasswd ] || ([ -f /opt/vps-browser/docker-compose.yml ] && grep -q 'PASSWORD=' /opt/vps-browser/docker-compose.yml); then echo "ACTIVA (Contraseña protegida)"; else echo "INSEGURA (Sin contraseña)"; fi)
+            echo -n "• Hardening de Privacidad: " && (if grep -q 'DisableTelemetry' /opt/vps-browser/policies.json /etc/firefox/policies/policies.json /opt/firefox/distribution/policies.json 2>/dev/null; then echo "PROTEGIDO (Telemetría bloqueada)"; else echo "INCOMPLETO"; fi)
+            echo -n "• Extensión uBlock Origin: " && (if grep -q 'uBlock0@raymondhill.net' /opt/vps-browser/policies.json /etc/firefox/policies/policies.json /opt/firefox/distribution/policies.json 2>/dev/null; then echo "INSTALADA Y ACTIVA"; else echo "NO ENCONTRADA"; fi)
             echo -n "• Control de Acceso Endpoint: " && (curl -s -o /dev/null -w "%{http_code}" --max-time 2 http://127.0.0.1:3000 2>/dev/null | grep -q '401' && echo "SEGURO (401 Authorization Requerida)" || echo "ACTIVO")
-            echo -n "• Túnel Cloudflare: " && (docker inspect -f '{{.State.Status}}' vps-tunnel 2>/dev/null || echo "No activo")
+            echo -n "• Túnel Cloudflare: " && (if systemctl is-active --quiet vps-tunnel 2>/dev/null; then echo "ACTIVO (systemd)"; else docker inspect -f '{{.State.Status}}' vps-tunnel 2>/dev/null || echo "No activo"; fi)
         """.trimIndent()
         return executeCommand(profile, auditCmd)
     }
 
     suspend fun nukeAndDestroyEnvironment(profile: VpsProfile): Result<String> {
-        // Destroys containers, volumes, networks, and deletes all files from the VPS
-        val nukeCmd = "cd /opt/vps-browser && docker compose down -v --remove-orphans; cd / && rm -rf /opt/vps-browser"
+        // Destroys containers, services, and deletes all files from the VPS
+        val nukeCmd = "systemctl stop vps-browser vps-tunnel 2>/dev/null || true; systemctl disable vps-browser vps-tunnel 2>/dev/null || true; cd /opt/vps-browser 2>/dev/null && docker compose down -v --remove-orphans 2>/dev/null || true; rm -rf /opt/vps-browser /etc/systemd/system/vps-browser.service /etc/systemd/system/vps-tunnel.service /etc/nginx/sites-enabled/vps-browser /etc/nginx/conf.d/vps-browser.conf"
         return executeCommand(profile, nukeCmd)
     }
 
     suspend fun fetchServerMetrics(profile: VpsProfile): Result<ServerMetrics> = withContext(Dispatchers.IO) {
-        val checkCmd = "free -m | awk '/^Mem:/{print $3, $2}'; uptime | awk -F'load average:' '{print $2}'; docker ps --filter name=vps-firefox --format '{{.Status}}'"
+        val checkCmd = "free -m | awk '/^Mem:/{print $3, $2}'; uptime | awk -F'load average:' '{print $2}'; (systemctl is-active --quiet vps-browser 2>/dev/null && echo 'Up (Nativo)' || docker ps --filter name=vps-firefox --format '{{.Status}}')"
         val result = executeCommand(profile, checkCmd)
 
         result.map { raw ->

@@ -17,6 +17,7 @@ object SshDeployer {
         password: String = "",
         privateKey: String = "",
         browserEngine: String = "firefox",
+        deployMode: String = "docker",
         onProgress: (stepTitle: String, percentage: Int) -> Unit,
         onLogLine: (line: String) -> Unit
     ): Result<VpsProfile> = withContext(Dispatchers.IO) {
@@ -24,8 +25,10 @@ object SshDeployer {
         var session: com.jcraft.jsch.Session? = null
 
         try {
+            val modeDesc = if (deployMode.equals("native", ignoreCase = true)) "⚡ NATIVO VPS (Ultraligero / Sin Docker)" else "🐳 DOCKER (Contenedor Aislado)"
             onProgress("Conectando con tu servidor por SSH...", 5)
             onLogLine(">>> Conectando a $user@$host:$port vía SSH...")
+            onLogLine(">>> Modo de instalación seleccionado: $modeDesc")
 
             if (privateKey.isNotBlank()) {
                 jsch.addIdentity("deploy_key", privateKey.toByteArray(), null, null)
@@ -48,9 +51,9 @@ object SshDeployer {
 
             val channel = session.openChannel("exec") as ChannelExec
 
-            // Command executes deployment script with stderr merged into stdout (2>&1)
-            // This prevents OS pipe deadlock and guarantees all logs/errors stream in real-time
-            val remoteCmd = "curl -fsSL https://raw.githubusercontent.com/anhot11/VpsBrowser/main/server/deploy.sh | bash 2>&1"
+            // Command executes deployment script with mode flag (--native or --docker)
+            val modeFlag = if (deployMode.equals("native", ignoreCase = true)) "--native" else "--docker"
+            val remoteCmd = "curl -fsSL https://raw.githubusercontent.com/anhot11/VpsBrowser/main/server/deploy.sh | bash -s -- $modeFlag 2>&1"
             channel.setCommand(remoteCmd)
             channel.setErrStream(System.err)
 
@@ -148,7 +151,7 @@ object SshDeployer {
             }
 
             val profile = VpsProfile(
-                name = "VPS Firefox ($host)",
+                name = if (deployMode.equals("native", ignoreCase = true)) "VPS Firefox Nativo ($host)" else "VPS Firefox Docker ($host)",
                 host = host,
                 sshPort = port,
                 sshUser = user,
@@ -160,6 +163,7 @@ object SshDeployer {
                 browserPort = 3000,
                 browserUser = detectedUser.ifBlank { "admin" },
                 browserPassword = detectedPassword,
+                browserEngine = if (deployMode.equals("native", ignoreCase = true)) "firefox-native" else "firefox",
                 useSsl = false,
                 touchEmulation = true
             )

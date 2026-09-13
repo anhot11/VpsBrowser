@@ -67,11 +67,16 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.text.font.FontWeight
 import com.vpsbrowser.app.model.VpsProfile
 import com.vpsbrowser.app.ssh.SshDeployer
 import com.vpsbrowser.app.ui.theme.DarkBorder
 import com.vpsbrowser.app.ui.theme.StatusGreen
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -101,7 +106,73 @@ fun SetupWizardScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var completedProfile by remember { mutableStateOf<VpsProfile?>(null) }
 
+    // Deployment mode selection (Docker vs Native Bare-Metal)
+    var showDeploymentModeDialog by remember { mutableStateOf(false) }
+    var selectedDeployMode by remember { mutableStateOf("docker") } // "docker" or "native"
+    var countdownSeconds by remember { mutableIntStateOf(5) }
+
     val terminalScrollState = rememberScrollState()
+
+    val startDeployment: (mode: String) -> Unit = { mode ->
+        showDeploymentModeDialog = false
+        errorMessage = null
+        isDeploying = true
+        terminalLogs = ">>> Iniciando sesión SSH hacia $host en modo ${if (mode == "native") "⚡ NATIVO VPS (Sin Docker / Ultraligero)" else "🐳 DOCKER (Contenedor Aislado)"}...\n"
+
+        scope.launch {
+            val result = SshDeployer.executeDeploy(
+                host = host.trim(),
+                port = sshPort.toIntOrNull() ?: 22,
+                user = sshUser.trim().ifBlank { "root" },
+                password = if (authMode == 0) password else "",
+                privateKey = if (authMode == 1) privateKey else "",
+                browserEngine = "firefox",
+                deployMode = mode,
+                onProgress = { title, pct ->
+                    scope.launch(Dispatchers.Main) {
+                        deployStepTitle = title
+                        deployProgress = pct
+                    }
+                },
+                onLogLine = { line ->
+                    scope.launch(Dispatchers.Main) {
+                        terminalLogs += line + "\n"
+                    }
+                }
+            )
+
+            withContext(Dispatchers.Main) {
+                isDeploying = false
+                result.onSuccess { profile ->
+                    if (authMode == 1) {
+                        profile.sshPrivateKey = privateKey
+                    } else {
+                        profile.sshPassword = password
+                    }
+                    profile.sshPort = sshPort.toIntOrNull() ?: 22
+                    profile.sshUser = sshUser.trim().ifBlank { "root" }
+                    completedProfile = profile
+                }.onFailure { err ->
+                    errorMessage = "Error: ${err.message}"
+                }
+            }
+        }
+    }
+
+    // 5-second countdown timer for auto-selecting default mode (Docker)
+    LaunchedEffect(showDeploymentModeDialog) {
+        if (showDeploymentModeDialog) {
+            countdownSeconds = 5
+            while (countdownSeconds > 0 && showDeploymentModeDialog) {
+                delay(1000L)
+                countdownSeconds--
+            }
+            if (showDeploymentModeDialog) {
+                // When 5s expires without user interaction, proceed with default Docker
+                startDeployment("docker")
+            }
+        }
+    }
 
     LaunchedEffect(terminalLogs) {
         terminalScrollState.animateScrollTo(terminalScrollState.maxValue)
@@ -298,6 +369,31 @@ fun SetupWizardScreen(
                             }
                         }
 
+                        // Mode info hint
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Speed,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Modos: 🐳 Docker (Aislado / Default) o ⚡ Nativo VPS (Ultraligero). Al pulsar iniciar, tendrás 5s para elegir.",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
                         Button(
                             onClick = {
                                 if (host.isBlank()) {
@@ -314,46 +410,9 @@ fun SetupWizardScreen(
                                 }
 
                                 errorMessage = null
-                                isDeploying = true
-                                terminalLogs = ">>> Iniciando sesión SSH hacia $host...\n"
-
-                                scope.launch {
-                                    val result = SshDeployer.executeDeploy(
-                                        host = host.trim(),
-                                        port = sshPort.toIntOrNull() ?: 22,
-                                        user = sshUser.trim().ifBlank { "root" },
-                                        password = if (authMode == 0) password else "",
-                                        privateKey = if (authMode == 1) privateKey else "",
-                                        browserEngine = "firefox",
-                                        onProgress = { title, pct ->
-                                            scope.launch(Dispatchers.Main) {
-                                                deployStepTitle = title
-                                                deployProgress = pct
-                                            }
-                                        },
-                                        onLogLine = { line ->
-                                            scope.launch(Dispatchers.Main) {
-                                                terminalLogs += line + "\n"
-                                            }
-                                        }
-                                    )
-
-                                    withContext(Dispatchers.Main) {
-                                        isDeploying = false
-                                        result.onSuccess { profile ->
-                                            if (authMode == 1) {
-                                                profile.sshPrivateKey = privateKey
-                                            } else {
-                                                profile.sshPassword = password
-                                            }
-                                            profile.sshPort = sshPort.toIntOrNull() ?: 22
-                                            profile.sshUser = sshUser.trim().ifBlank { "root" }
-                                            completedProfile = profile
-                                        }.onFailure { err ->
-                                            errorMessage = "Error: ${err.message}"
-                                        }
-                                    }
-                                }
+                                selectedDeployMode = "docker"
+                                countdownSeconds = 5
+                                showDeploymentModeDialog = true
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -363,6 +422,181 @@ fun SetupWizardScreen(
                         }
                     }
                 }
+            }
+
+            // Modal Dialog: 5-Second Mode Selection (Docker default vs Native VPS)
+            if (showDeploymentModeDialog) {
+                AlertDialog(
+                    onDismissRequest = { showDeploymentModeDialog = false },
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Default.Speed,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    },
+                    title = {
+                        Text(
+                            text = "¿Cómo deseas instalar en tu VPS?",
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                    },
+                    text = {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // Countdown Banner
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(10.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        text = "⏱️ Continuando con Docker automáticamente en: ${countdownSeconds}s",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    LinearProgressIndicator(
+                                        progress = { countdownSeconds / 5f },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(4.dp)
+                                    )
+                                }
+                            }
+
+                            Text(
+                                text = "Toca tu opción preferida o espera a que inicie con Docker:",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            // Option 1: Docker (Default)
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (selectedDeployMode == "docker") MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    if (selectedDeployMode == "docker") 2.dp else 1.dp,
+                                    if (selectedDeployMode == "docker") MaterialTheme.colorScheme.primary else DarkBorder
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        selectedDeployMode = "docker"
+                                        startDeployment("docker")
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = "🐳 Docker (Contenedor)",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                                            ) {
+                                                Text(
+                                                    text = "PREDETERMINADO",
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "Aislamiento total y máxima compatibilidad. No altera paquetes del host.",
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            lineHeight = 14.sp
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Option 2: Native VPS (Ultra-lightweight)
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (selectedDeployMode == "native") MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    if (selectedDeployMode == "native") 2.dp else 1.dp,
+                                    if (selectedDeployMode == "native") MaterialTheme.colorScheme.tertiary else DarkBorder
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        selectedDeployMode = "native"
+                                        startDeployment("native")
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = "⚡ Nativo VPS (Sin Docker)",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f)
+                                            ) {
+                                                Text(
+                                                    text = "MÁXIMO RENDIMIENTO",
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.tertiary,
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "Ahorra 70% de RAM y 80% de disco. Sin sobrecarga de Docker. Ideal para VPS de 512MB/1GB.",
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            lineHeight = 14.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = { startDeployment(selectedDeployMode) }
+                        ) {
+                            Text("Continuar con Docker (${countdownSeconds}s)")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = { showDeploymentModeDialog = false }
+                        ) {
+                            Text("Cancelar")
+                        }
+                    }
+                )
             }
 
             // Deployment Progress & Terminal Output
