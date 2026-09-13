@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import android.content.ClipData
@@ -86,6 +87,8 @@ fun ServerManagerScreen(
     var actionInProgress by remember { mutableStateOf<String?>(null) }
     var actionMessage by remember { mutableStateOf<String?>(null) }
     var showNukeDialog by remember { mutableStateOf(false) }
+    var auditResult by remember { mutableStateOf<String?>(null) }
+    var showAuditDialog by remember { mutableStateOf(false) }
 
     fun refreshMetrics() {
         isLoadingMetrics = true
@@ -275,6 +278,27 @@ fun ServerManagerScreen(
                 }
             )
 
+            // Security Audit Button
+            ActionButtonItem(
+                icon = Icons.Default.Security,
+                title = "Auditar Seguridad de la Instancia",
+                description = "Comprueba el estado de aislamiento Docker, Nginx Basic Auth, uBlock Origin y políticas de privacidad.",
+                enabled = actionInProgress == null,
+                onClick = {
+                    actionInProgress = "Auditando seguridad en VPS..."
+                    scope.launch {
+                        val res = SshRemoteLifecycle.auditSecurity(profile)
+                        actionInProgress = null
+                        if (res.isSuccess) {
+                            auditResult = res.getOrNull()
+                            showAuditDialog = true
+                        } else {
+                            actionMessage = "Error en auditoría: ${res.exceptionOrNull()?.message}"
+                        }
+                    }
+                }
+            )
+
             // Clear Cache Button
             ActionButtonItem(
                 icon = Icons.Default.CleaningServices,
@@ -348,6 +372,50 @@ fun ServerManagerScreen(
             dismissButton = {
                 TextButton(onClick = { showNukeDialog = false }) {
                     Text("Cancelar")
+                }
+            }
+        )
+    }
+
+    // Security Audit Dialog
+    if (showAuditDialog && auditResult != null) {
+        AlertDialog(
+            onDismissRequest = { showAuditDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Security, contentDescription = null, tint = StatusGreen)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Auditoría de Seguridad VPS")
+                }
+            },
+            text = {
+                Column {
+                    Text(
+                        "Resultados de la comprobación de integridad y seguridad remota:",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        color = Color(0xFF0D1117),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth().padding(4.dp)
+                    ) {
+                        SelectionContainer {
+                            Text(
+                                text = auditResult!!,
+                                color = Color(0xFF39D353),
+                                fontSize = 12.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showAuditDialog = false }) {
+                    Text("Aceptar")
                 }
             }
         )

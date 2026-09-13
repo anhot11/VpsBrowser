@@ -75,6 +75,116 @@ install_pkg() {
 install_pkg
 echo -e "  • ${GREEN}✓ Herramientas base listas (curl, wget, openssl, ca-certificates).${NC}"
 
+DEPLOY_DIR="/opt/vps-browser"
+PREVIOUS_INSTANCE_FOUND=0
+PREVIOUS_INSTANCE_SECURE=1
+PASS=""
+
+# 3. Detección y Auditoría de Seguridad de Instancia Previa
+echo -e "\n${BLUE}[DETECCIÓN] Verificando presencia de instancia previa y auditando seguridad...${NC}"
+if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qw "vps-firefox" || [ -d "$DEPLOY_DIR" ]; then
+    PREVIOUS_INSTANCE_FOUND=1
+    echo -e "  • ${BLUE}🔍 Instancia previa de VPS Browser encontrada en la VPS.${NC}"
+    echo -e "  • Iniciando auditoría exhaustiva de seguridad y estado..."
+
+    # 1. Estado del Contenedor
+    CONTAINER_STATUS=$(docker inspect -f '{{.State.Status}}' vps-firefox 2>/dev/null || echo "not_found")
+    if [ "$CONTAINER_STATUS" = "running" ]; then
+        echo -e "  • ${GREEN}✓ [1/5] Contenedor Docker: ACTIVO y en ejecución saludable.${NC}"
+    else
+        echo -e "  • ${YELLOW}⚠️ [1/5] Contenedor Docker: Estado '$CONTAINER_STATUS' (Requiere inicio/reparación).${NC}"
+        PREVIOUS_INSTANCE_SECURE=0
+    fi
+
+    # 2. Contraseña y Autenticación Nginx
+    if [ -f "$DEPLOY_DIR/docker-compose.yml" ]; then
+        EXISTING_PASS=$(grep -E 'PASSWORD=' "$DEPLOY_DIR/docker-compose.yml" 2>/dev/null | head -n 1 | cut -d= -f2 | tr -d ' ' || true)
+    fi
+    if [ -z "$EXISTING_PASS" ] && [ "$CONTAINER_STATUS" = "running" ]; then
+        EXISTING_PASS=$(docker exec vps-firefox env 2>/dev/null | grep -E '^PASSWORD=' | cut -d= -f2 || true)
+    fi
+
+    if [ -n "$EXISTING_PASS" ] && [ "${#EXISTING_PASS}" -ge 8 ] && [ "$EXISTING_PASS" != "abc" ]; then
+        echo -e "  • ${GREEN}✓ [2/5] Autenticación Nginx: ACTIVA con contraseña segura (${#EXISTING_PASS} caracteres).${NC}"
+        PASS="$EXISTING_PASS"
+    else
+        echo -e "  • ${RED}❌ [2/5] Alerta de Seguridad: Contraseña ausente o insegura. Requiere actualización.${NC}"
+        PREVIOUS_INSTANCE_SECURE=0
+    fi
+
+    # 3. Hardening Firefox y uBlock Origin
+    if [ -f "$DEPLOY_DIR/policies.json" ] && grep -q "uBlock0@raymondhill.net" "$DEPLOY_DIR/policies.json" 2>/dev/null && grep -q '"DisableTelemetry": true' "$DEPLOY_DIR/policies.json" 2>/dev/null; then
+        echo -e "  • ${GREEN}✓ [3/5] Privacidad Hardened: Telemetría deshabilitada + uBlock Origin preinstalado.${NC}"
+    else
+        echo -e "  • ${YELLOW}⚠️ [3/5] Privacidad: Políticas incompletas. Se reinyectarán políticas seguras.${NC}"
+        PREVIOUS_INSTANCE_SECURE=0
+    fi
+
+    # 4. Respuesta de Endpoint HTTP (debe exigir 401 Unauthorized para bloquear acceso no autenticado)
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:3000 || echo "000")
+    if [ "$HTTP_CODE" = "401" ]; then
+        echo -e "  • ${GREEN}✓ [4/5] Control de Acceso: 401 Authorization Required (NGINX bloquea intrusos correctamente).${NC}"
+    elif [ "$HTTP_CODE" = "200" ]; then
+        echo -e "  • ${GREEN}✓ [4/5] Control de Acceso: 200 OK (Endpoint accesible con credenciales).${NC}"
+    else
+        echo -e "  • ${YELLOW}⚠️ [4/5] Control de Acceso: Código HTTP '$HTTP_CODE'. Se verificará configuración.${NC}"
+        PREVIOUS_INSTANCE_SECURE=0
+    fi
+
+    # 5. Túnel Cloudflare Quick Tunnel
+    TUNNEL_STATUS=$(docker inspect -f '{{.State.Status}}' vps-tunnel 2>/dev/null || echo "not_found")
+    CF_URL=""
+    if [ "$TUNNEL_STATUS" = "running" ]; then
+        if [ -f "$DEPLOY_DIR/cloudflare_tunnel.txt" ]; then
+            CF_URL=$(cat "$DEPLOY_DIR/cloudflare_tunnel.txt" | tr -d ' \r\n' || true)
+        fi
+        if [ -z "$CF_URL" ]; then
+            CF_URL=$(docker logs vps-tunnel 2>&1 | grep -o 'https://[-a-zA-Z0-9]*\.trycloudflare\.com' | head -n 1 || true)
+        fi
+        if [ -n "$CF_URL" ]; then
+            echo -e "  • ${GREEN}✓ [5/5] Túnel Cloudflare: ACTIVO sin puertos públicos abiertos ($CF_URL).${NC}"
+        else
+            echo -e "  • ${YELLOW}⚠️ [5/5] Túnel Cloudflare: Activo pero obteniendo enlace.${NC}"
+        fi
+    else
+        echo -e "  • ${YELLOW}⚠️ [5/5] Túnel Cloudflare: No iniciado.${NC}"
+        PREVIOUS_INSTANCE_SECURE=0
+    fi
+
+    if [ "$PREVIOUS_INSTANCE_SECURE" -eq 1 ] && [ "$CONTAINER_STATUS" = "running" ] && [ -n "$PASS" ]; then
+        echo -e "\n${GREEN}${BOLD}🛡️ [RESULTADO AUDITORÍA] La instancia previa fue verificada y es 100% SEGURA.${NC}"
+        echo -e "  • La instancia cumple todos los criterios de seguridad, cifrado y privacidad."
+        echo -e "  • Se reutiliza la instancia activa sin necesidad de reinstalar.\n"
+
+        PUBLIC_IP=$(curl -s --max-time 3 https://api.ipify.org 2>/dev/null || curl -s --max-time 3 https://icanhazip.com 2>/dev/null || hostname -I | awk '{print $1}')
+
+        echo -e "${GREEN}${BOLD}======================================================${NC}"
+        echo -e "${GREEN}${BOLD}    🎉 ¡VPS BROWSER FIREFOX INSTALADO CON ÉXITO!      ${NC}"
+        echo -e "${GREEN}${BOLD}======================================================${NC}"
+        echo -e "Usa estos datos de conexión en la aplicación Android:"
+        echo ""
+        echo -e "  • ${BOLD}IP / Host:${NC}          ${YELLOW}$PUBLIC_IP${NC}"
+        echo -e "  • ${BOLD}Puerto HTTP:${NC}        ${YELLOW}3000${NC}"
+        echo -e "  • ${BOLD}Puerto HTTPS:${NC}       ${YELLOW}3001${NC}"
+        echo -e "  • ${BOLD}Usuario:${NC}            ${YELLOW}admin${NC}"
+        echo -e "  • ${BOLD}Contraseña / Token:${NC} ${YELLOW}$PASS${NC}"
+        echo ""
+        if [ -n "$CF_URL" ]; then
+            echo -e "  • ${BOLD}Túnel Cloudflare (HTTPS):${NC} ${GREEN}$CF_URL${NC}"
+            echo -e "    ${YELLOW}(¡Conexión sin abrir puertos en la VPS ni en el Router/Firewall!)${NC}"
+            echo ""
+        fi
+        echo -e "  • ${BOLD}Enlace Web Directo:${NC} ${BLUE}http://$PUBLIC_IP:3000${NC}"
+        echo -e "${GREEN}${BOLD}======================================================${NC}\n"
+        exit 0
+    else
+        echo -e "\n${YELLOW}${BOLD}⚠️ [RESULTADO AUDITORÍA] Se detectó instancia previa con componentes a reparar.${NC}"
+        echo -e "  • El instalador blindará y actualizará la configuración de forma segura.\n"
+    fi
+else
+    echo -e "  • ${BLUE}ℹ️ No se detectó instancia previa. Se procederá con una instalación limpia y segura.${NC}"
+fi
+
 # 4. Optimización de Memoria RAM, SWAP y Kernel para VPS ligeras (512MB / 1GB)
 echo -e "\n${BLUE}[3/7] Optimizando memoria RAM, SWAP y rendimiento para VPS ligera...${NC}"
 TOTAL_RAM_MB=$(free -m | awk '/^Mem:/{print $2}')

@@ -73,6 +73,14 @@ object SshDeployer {
 
                 // Track and parse progress
                 when {
+                    cleanLine.contains("[DETECCIÓN]") -> {
+                        currentPercentage = 25
+                        onProgress("Auditando seguridad de instancia previa...", currentPercentage)
+                    }
+                    cleanLine.contains("100% SEGURA") -> {
+                        currentPercentage = 95
+                        onProgress("🛡️ Instancia previa verificada como 100% segura", currentPercentage)
+                    }
                     cleanLine.contains("[1/7]") -> {
                         currentPercentage = 20
                         onProgress("Paso 1/7: Detectando sistema operativo y CPU...", currentPercentage)

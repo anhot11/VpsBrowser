@@ -89,6 +89,19 @@ object SshRemoteLifecycle {
         return executeCommand(profile, "rm -rf /opt/vps-browser/config/.cache/* 2>/dev/null || true")
     }
 
+    suspend fun auditSecurity(profile: VpsProfile): Result<String> {
+        val auditCmd = """
+            echo "🛡️ INFORME DE AUDITORÍA DE SEGURIDAD:"
+            echo -n "• Contenedor Docker: " && (docker inspect -f '{{.State.Status}}' vps-firefox 2>/dev/null || echo "No instalado")
+            echo -n "• Autenticación Nginx: " && (if [ -f /opt/vps-browser/docker-compose.yml ] && grep -q 'PASSWORD=' /opt/vps-browser/docker-compose.yml; then echo "ACTIVA (Contraseña protegida)"; else echo "INSEGURA (Sin contraseña)"; fi)
+            echo -n "• Hardening de Privacidad: " && (if grep -q 'DisableTelemetry' /opt/vps-browser/policies.json 2>/dev/null; then echo "PROTEGIDO (Telemetría bloqueada)"; else echo "INCOMPLETO"; fi)
+            echo -n "• Extensión uBlock Origin: " && (if grep -q 'uBlock0@raymondhill.net' /opt/vps-browser/policies.json 2>/dev/null; then echo "INSTALADA Y ACTIVA"; else echo "NO ENCONTRADA"; fi)
+            echo -n "• Control de Acceso Endpoint: " && (curl -s -o /dev/null -w "%{http_code}" --max-time 2 http://127.0.0.1:3000 2>/dev/null | grep -q '401' && echo "SEGURO (401 Authorization Requerida)" || echo "ACTIVO")
+            echo -n "• Túnel Cloudflare: " && (docker inspect -f '{{.State.Status}}' vps-tunnel 2>/dev/null || echo "No activo")
+        """.trimIndent()
+        return executeCommand(profile, auditCmd)
+    }
+
     suspend fun nukeAndDestroyEnvironment(profile: VpsProfile): Result<String> {
         // Destroys containers, volumes, networks, and deletes all files from the VPS
         val nukeCmd = "cd /opt/vps-browser && docker compose down -v --remove-orphans; cd / && rm -rf /opt/vps-browser"
