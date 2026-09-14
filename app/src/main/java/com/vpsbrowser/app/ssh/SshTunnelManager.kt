@@ -59,13 +59,14 @@ object SshTunnelManager {
      */
     suspend fun startSocksProxy(profile: VpsProfile): Result<Int> = withContext(Dispatchers.IO) {
         try {
-            if (activeSession?.isConnected != true) {
+            val sessionWasReconnected = activeSession?.isConnected != true
+            if (sessionWasReconnected) {
                 stopTunnel()
                 activeSession = createSession(profile)
             }
 
             val session = activeSession!!
-            if (activeSocksPort > 0 && socksServer?.isRunning() == true) {
+            if (!sessionWasReconnected && activeSocksPort > 0 && socksServer?.isRunning() == true) {
                 return@withContext Result.success(activeSocksPort)
             }
 

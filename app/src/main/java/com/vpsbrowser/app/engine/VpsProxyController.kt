@@ -22,15 +22,18 @@ object VpsProxyController {
         }
 
         try {
+            // AndroidX WebKit ProxyConfig supports "socks://" and "http://" schemes.
+            // SshSocksServer handles both SOCKS5 and HTTP CONNECT transparently on the same port.
             val proxyConfig = ProxyConfig.Builder()
-                .addProxyRule("socks5://127.0.0.1:$socksPort")
+                .addProxyRule("socks://127.0.0.1:$socksPort")
+                .addProxyRule("http://127.0.0.1:$socksPort")
                 .build()
 
             ProxyController.getInstance().setProxyOverride(
                 proxyConfig,
                 directExecutor
             ) {
-                Log.d(TAG, "SOCKS5 proxy applied successfully: 127.0.0.1:$socksPort")
+                Log.d(TAG, "VPS Tunnel Proxy applied successfully: 127.0.0.1:$socksPort (socks + http)")
                 onComplete?.invoke(true)
             }
         } catch (e: Exception) {

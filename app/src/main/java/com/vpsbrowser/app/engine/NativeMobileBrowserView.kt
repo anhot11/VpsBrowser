@@ -222,6 +222,26 @@ fun NativeMobileBrowserView(
                         }
                         return false
                     }
+
+                    override fun onReceivedError(
+                        view: WebView?,
+                        request: android.webkit.WebResourceRequest?,
+                        error: android.webkit.WebResourceError?
+                    ) {
+                        super.onReceivedError(view, request, error)
+                        if (request?.isForMainFrame == true) {
+                            android.util.Log.e("NativeMobileBrowser", "WebView main frame error: code=${error?.errorCode}, desc=${error?.description}, url=${request.url}")
+                        }
+                    }
+
+                    override fun onReceivedSslError(
+                        view: WebView?,
+                        handler: android.webkit.SslErrorHandler?,
+                        error: android.net.http.SslError?
+                    ) {
+                        android.util.Log.w("NativeMobileBrowser", "WebView SSL error: ${error?.primaryError} on ${error?.url}")
+                        super.onReceivedSslError(view, handler, error)
+                    }
                 }
 
                 if (url.isNotBlank()) {
