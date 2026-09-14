@@ -551,8 +551,8 @@ fun ServerManagerScreen(
 
                             if (metrics != null) {
                                 val m = metrics!!
-                                val ramUsage = m.ramUsageMb
-                                val totalRam = m.totalRamMb.coerceAtLeast(1)
+                                val ramUsage = m.ramUsageMb.toIntOrNull() ?: 0
+                                val totalRam = (m.totalRamMb.toIntOrNull() ?: 1024).coerceAtLeast(1)
                                 val ramFrac = (ramUsage.toFloat() / totalRam.toFloat()).coerceIn(0f, 1f)
                                 val ramPct = (ramFrac * 100).toInt()
                                 val ramColor = when {
@@ -799,7 +799,7 @@ fun ServerManagerScreen(
                                         if (profile.cloudflareUrl.isNotBlank()) {
                                             sb.append("• ☁️ Ruta Túnel Cloudflare:      ${if (cfPing > 0) "${cfPing}ms (Red Anycast)" else "No disponible"}\n")
                                         }
-                                        sb.append("\n💡 Recomendación: ${if (dp in 1..100) "Usa la Ruta Directa con Escudo IP para la menor latencia y suavidad al navegar." else "Usa el Túnel SSH para máxima compatibilidad."}")
+                                        sb.append("\n💡 Recomendación: ${if (dp in 1L..100L) "Usa la Ruta Directa con Escudo IP para la menor latencia y suavidad al navegar." else "Usa el Túnel SSH para máxima compatibilidad."}")
 
                                         actionInProgress = null
                                         resultDialogTitle = "📊 Comparativa de Rendimiento"
