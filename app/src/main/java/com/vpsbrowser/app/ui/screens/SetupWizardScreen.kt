@@ -142,7 +142,6 @@ fun SetupWizardScreen(
             )
 
             withContext(Dispatchers.Main) {
-                isDeploying = false
                 result.onSuccess { profile ->
                     if (authMode == 1) {
                         profile.sshPrivateKey = privateKey
@@ -151,8 +150,14 @@ fun SetupWizardScreen(
                     }
                     profile.sshPort = sshPort.toIntOrNull() ?: 22
                     profile.sshUser = sshUser.trim().ifBlank { "root" }
+                    deployStepTitle = "¡Configuración exitosa! Abriendo navegador..."
+                    deployProgress = 100
+                    Toast.makeText(context, "¡Configuración exitosa! Abriendo navegador...", Toast.LENGTH_SHORT).show()
                     completedProfile = profile
+                    isDeploying = false
+                    onDeploymentSuccess(profile)
                 }.onFailure { err ->
+                    isDeploying = false
                     errorMessage = "Error: ${err.message}"
                 }
             }
@@ -617,7 +622,7 @@ fun SetupWizardScreen(
                             }
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
-                                text = if (completedProfile != null) "¡Instalación Exitosa!" else "Configurando tu VPS...",
+                                text = if (completedProfile != null) "¡Instalación Exitosa! Abriendo navegador..." else "Configurando tu VPS...",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = if (completedProfile != null) StatusGreen else MaterialTheme.colorScheme.primary
                             )
@@ -723,13 +728,23 @@ fun SetupWizardScreen(
                                     }
                                 }
                             }
-                            Button(
-                                onClick = { onDeploymentSuccess(completedProfile!!) },
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(50.dp)
+                                    .clickable { onDeploymentSuccess(completedProfile!!) }
                             ) {
-                                Text("🌐 Conectar y Abrir Navegador Ahora")
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center,
+                                    modifier = Modifier.fillMaxSize()
+                                ) {
+                                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text("Abriendo navegador de inmediato...", fontWeight = FontWeight.SemiBold)
+                                }
                             }
                         }
                     }

@@ -260,6 +260,7 @@ fun ProfilesScreen(
                         appEngine = target.appEngine
                     )
                     onSaveProfile(updated)
+                    onSelectProfile(updated)
                     isAddingNew = false
                     editingProfile = null
                 }) {
