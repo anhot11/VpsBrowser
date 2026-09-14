@@ -23,7 +23,8 @@ data class VpsProfile(
     var connectionMode: String = "auto", // "auto", "direct", "ssh_tunnel", "cloudflare"
     var enableIpShield: Boolean = true, // Dynamic IP whitelisting on VPS iptables for direct speed & stealth
     var enableBbr: Boolean = true, // TCP BBR Turbo kernel optimization
-    var appEngine: String = "turbo" // "turbo" (Firefox Turbo Client con WebCodecs 60 FPS) or "gecko" (Mozilla GeckoView)
+    var appEngine: String = "turbo", // "turbo" (Firefox Turbo Client con WebCodecs 60 FPS) or "gecko" (Mozilla GeckoView)
+    var browserMode: String = "native_mobile" // "native_mobile" (UI Celular Nativa 0ms + VPS SOCKS5) or "remote_desktop" (Escritorio PC Completo KasmVNC)
 ) {
     var port: Int
         get() = browserPort

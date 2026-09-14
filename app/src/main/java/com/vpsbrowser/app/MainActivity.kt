@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import com.vpsbrowser.app.engine.VpsProxyController
 import com.vpsbrowser.app.model.VpsProfile
 import com.vpsbrowser.app.security.SecurityManager
 import com.vpsbrowser.app.ssh.SshTunnelManager
@@ -50,6 +51,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        VpsProxyController.clearProxy()
         SshTunnelManager.stopTunnel()
         super.onDestroy()
     }

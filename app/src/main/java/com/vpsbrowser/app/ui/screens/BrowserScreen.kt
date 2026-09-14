@@ -82,16 +82,20 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.activity.compose.BackHandler
 import com.vpsbrowser.app.engine.FirefoxTurboBrowserView
 import com.vpsbrowser.app.engine.GeckoBrowserView
+import com.vpsbrowser.app.engine.NativeMobileBrowserView
 import com.vpsbrowser.app.engine.VpsEngineController
 import com.vpsbrowser.app.engine.VpsEngineType
+import com.vpsbrowser.app.engine.VpsProxyController
 import com.vpsbrowser.app.model.VpsProfile
 import com.vpsbrowser.app.ssh.SshRemoteLifecycle
 import com.vpsbrowser.app.ssh.SshTunnelManager
 import com.vpsbrowser.app.ui.components.DesktopAccessoryBar
 import com.vpsbrowser.app.ui.components.EngineControlDialog
 import com.vpsbrowser.app.ui.components.FloatingPillToolbar
+import com.vpsbrowser.app.ui.components.MobileBrowserOmnibar
 import com.vpsbrowser.app.ui.theme.DarkBorder
 import com.vpsbrowser.app.ui.theme.StatusGreen
 import com.vpsbrowser.app.ui.theme.StatusRed
@@ -154,81 +158,58 @@ fun BrowserScreen(
     var cursorX by remember { mutableFloatStateOf(400f) }
     var cursorY by remember { mutableFloatStateOf(600f) }
 
-    // Adaptive Multi-Path Router: Direct (Escudo IP) -> SSH Tunnel -> Cloudflare Tunnel
+    // Native Mobile vs Remote Desktop Mode
+    var browserMode by remember { mutableStateOf(profile.browserMode.ifBlank { "native_mobile" }) }
+    var isSocksActive by remember { mutableStateOf(false) }
+    var mobileCanGoBack by remember { mutableStateOf(false) }
+    var mobileCanGoForward by remember { mutableStateOf(false) }
+
+    // Adaptive Multi-Path Router: Direct (Escudo IP) -> SSH Tunnel -> Cloudflare Tunnel -> SOCKS5
     fun connect() {
         connectionError = null
         scope.launch {
-            when (profile.connectionMode) {
-                "cloudflare" -> {
-                    if (profile.cloudflareUrl.isNotBlank()) {
-                        SshTunnelManager.stopTunnel()
+            if (browserMode == "native_mobile") {
+                isConnectingTunnel = true
+                activeRouteName = "🛡️ Túnel SOCKS5..."
+                val socksRes = SshTunnelManager.startSocksProxy(profile)
+                isConnectingTunnel = false
+                socksRes.onSuccess { socksPort ->
+                    VpsProxyController.applySocksProxy(socksPort) { success ->
+                        isSocksActive = success
                         isTunnelActive = true
-                        activeRouteName = "☁️ Cloudflare"
-                        val cfUrl = profile.cloudflareUrl.trimEnd('/')
-                        currentUrl = cfUrl
-                        engineController?.loadUrl(cfUrl)
-                    } else {
-                        connectionError = "No hay URL de Cloudflare Tunnel configurada en este perfil."
-                    }
-                }
-                "ssh_tunnel" -> {
-                    isConnectingTunnel = true
-                    activeRouteName = "🔒 Túnel SSH..."
-                    val tunnelRes = SshTunnelManager.startTunnel(profile)
-                    isConnectingTunnel = false
-                    tunnelRes.onSuccess { localUrl ->
-                        isTunnelActive = true
-                        activeRouteName = "🔒 Túnel SSH"
-                        currentUrl = localUrl
-                        engineController?.loadUrl(localUrl)
-                    }.onFailure { err ->
-                        isTunnelActive = false
-                        connectionError = "Fallo al crear túnel SSH: ${err.message}."
-                    }
-                }
-                "direct" -> {
-                    SshTunnelManager.stopTunnel()
-                    if (profile.enableIpShield) {
-                        activeRouteName = "🛡️ Escudo IP..."
-                        val ip = NetworkHelper.getDevicePublicIp()
-                        clientPublicIp = ip
-                        if (ip != null) {
-                            SshRemoteLifecycle.whitelistClientIp(profile, ip)
+                        activeRouteName = "🛡️ Móvil VPS"
+                        val target = if (currentUrl.isBlank() || currentUrl.startsWith("http://127.0.0.1") || currentUrl.contains(":3000")) {
+                            if (searchEngineUrl.isNotBlank()) searchEngineUrl else "https://www.google.com"
+                        } else {
+                            currentUrl
                         }
+                        currentUrl = target
+                        omnibarText = target
+                        engineController?.loadUrl(target)
                     }
+                }.onFailure { err ->
+                    isSocksActive = false
                     isTunnelActive = false
-                    activeRouteName = "⚡ Directo"
-                    val directUrl = profile.getDirectUrl()
-                    currentUrl = directUrl
-                    engineController?.loadUrl(directUrl)
+                    connectionError = "Fallo al iniciar túnel seguro VPS: ${err.message}"
                 }
-                else -> { // "auto": Fast-Path Inteligente
-                    activeRouteName = "⚡ Fast-Path..."
-                    var directConnected = false
-                    if (profile.enableIpShield) {
-                        val ip = NetworkHelper.getDevicePublicIp()
-                        clientPublicIp = ip
-                        if (ip != null) {
-                            SshRemoteLifecycle.whitelistClientIp(profile, ip)
+            } else {
+                VpsProxyController.clearProxy()
+                when (profile.connectionMode) {
+                    "cloudflare" -> {
+                        if (profile.cloudflareUrl.isNotBlank()) {
+                            SshTunnelManager.stopTunnel()
+                            isTunnelActive = true
+                            activeRouteName = "☁️ Cloudflare"
+                            val cfUrl = profile.cloudflareUrl.trimEnd('/')
+                            currentUrl = cfUrl
+                            engineController?.loadUrl(cfUrl)
+                        } else {
+                            connectionError = "No hay URL de Cloudflare Tunnel configurada en este perfil."
                         }
                     }
-
-                    // Comprobar si el puerto directo 3000 responde
-                    val canReachDirect = NetworkHelper.testPortReachability(profile.getCleanHost(), profile.browserPort, 2000)
-                    if (canReachDirect) {
-                        SshTunnelManager.stopTunnel()
-                        isTunnelActive = false
-                        activeRouteName = "⚡ Directo"
-                        val directUrl = profile.getDirectUrl()
-                        currentUrl = directUrl
-                        engineController?.loadUrl(directUrl)
-                        directConnected = true
-                    }
-
-                    if (!directConnected) {
-                        // Respaldo automático 1: Túnel SSH local
-                        activeRouteName = "🔒 SSH..."
+                    "ssh_tunnel" -> {
                         isConnectingTunnel = true
+                        activeRouteName = "🔒 Túnel SSH..."
                         val tunnelRes = SshTunnelManager.startTunnel(profile)
                         isConnectingTunnel = false
                         tunnelRes.onSuccess { localUrl ->
@@ -236,17 +217,73 @@ fun BrowserScreen(
                             activeRouteName = "🔒 Túnel SSH"
                             currentUrl = localUrl
                             engineController?.loadUrl(localUrl)
-                        }.onFailure {
-                            // Respaldo automático 2: Túnel Cloudflare
-                            if (profile.cloudflareUrl.isNotBlank()) {
+                        }.onFailure { err ->
+                            isTunnelActive = false
+                            connectionError = "Fallo al crear túnel SSH: ${err.message}."
+                        }
+                    }
+                    "direct" -> {
+                        SshTunnelManager.stopTunnel()
+                        if (profile.enableIpShield) {
+                            activeRouteName = "🛡️ Escudo IP..."
+                            val ip = NetworkHelper.getDevicePublicIp()
+                            clientPublicIp = ip
+                            if (ip != null) {
+                                SshRemoteLifecycle.whitelistClientIp(profile, ip)
+                            }
+                        }
+                        isTunnelActive = false
+                        activeRouteName = "⚡ Directo"
+                        val directUrl = profile.getDirectUrl()
+                        currentUrl = directUrl
+                        engineController?.loadUrl(directUrl)
+                    }
+                    else -> { // "auto": Fast-Path Inteligente
+                        activeRouteName = "⚡ Fast-Path..."
+                        var directConnected = false
+                        if (profile.enableIpShield) {
+                            val ip = NetworkHelper.getDevicePublicIp()
+                            clientPublicIp = ip
+                            if (ip != null) {
+                                SshRemoteLifecycle.whitelistClientIp(profile, ip)
+                            }
+                        }
+
+                        // Comprobar si el puerto directo 3000 responde
+                        val canReachDirect = NetworkHelper.testPortReachability(profile.getCleanHost(), profile.browserPort, 2000)
+                        if (canReachDirect) {
+                            SshTunnelManager.stopTunnel()
+                            isTunnelActive = false
+                            activeRouteName = "⚡ Directo"
+                            val directUrl = profile.getDirectUrl()
+                            currentUrl = directUrl
+                            engineController?.loadUrl(directUrl)
+                            directConnected = true
+                        }
+
+                        if (!directConnected) {
+                            // Respaldo automático 1: Túnel SSH local
+                            activeRouteName = "🔒 SSH..."
+                            isConnectingTunnel = true
+                            val tunnelRes = SshTunnelManager.startTunnel(profile)
+                            isConnectingTunnel = false
+                            tunnelRes.onSuccess { localUrl ->
                                 isTunnelActive = true
-                                activeRouteName = "☁️ Cloudflare"
-                                val cfUrl = profile.cloudflareUrl.trimEnd('/')
-                                currentUrl = cfUrl
-                                engineController?.loadUrl(cfUrl)
-                            } else {
-                                isTunnelActive = false
-                                connectionError = "No se pudo conectar de forma directa ni por túnel SSH. Verifica que tu VPS esté activa."
+                                activeRouteName = "🔒 Túnel SSH"
+                                currentUrl = localUrl
+                                engineController?.loadUrl(localUrl)
+                            }.onFailure {
+                                // Respaldo automático 2: Túnel Cloudflare
+                                if (profile.cloudflareUrl.isNotBlank()) {
+                                    isTunnelActive = true
+                                    activeRouteName = "☁️ Cloudflare"
+                                    val cfUrl = profile.cloudflareUrl.trimEnd('/')
+                                    currentUrl = cfUrl
+                                    engineController?.loadUrl(cfUrl)
+                                } else {
+                                    isTunnelActive = false
+                                    connectionError = "No se pudo conectar de forma directa ni por túnel SSH. Verifica que tu VPS esté activa."
+                                }
                             }
                         }
                     }
@@ -255,7 +292,7 @@ fun BrowserScreen(
         }
     }
 
-    LaunchedEffect(profile) {
+    LaunchedEffect(profile, browserMode) {
         connect()
     }
 
@@ -275,8 +312,39 @@ fun BrowserScreen(
         }
     }
 
+    fun toggleBrowserMode() {
+        val newMode = if (browserMode == "native_mobile") "remote_desktop" else "native_mobile"
+        browserMode = newMode
+        profile.browserMode = newMode
+        onSaveProfile(profile)
+        if (newMode == "native_mobile") {
+            if (currentUrl.contains(":3000") || currentUrl.startsWith("http://127.0.0.1")) {
+                val target = if (searchEngineUrl.isNotBlank()) searchEngineUrl else "https://www.google.com"
+                currentUrl = target
+                omnibarText = target
+            }
+        } else {
+            VpsProxyController.clearProxy()
+            currentUrl = ""
+            omnibarText = ""
+        }
+        connect()
+    }
+
+    fun verifyIp() {
+        val target = "https://browserleaks.com/ip"
+        currentUrl = target
+        omnibarText = target
+        engineController?.loadUrl(target)
+    }
+
+    BackHandler(enabled = browserMode == "native_mobile" && (mobileCanGoBack || engineController?.canGoBack() == true)) {
+        engineController?.goBack()
+    }
+
     DisposableEffect(Unit) {
         onDispose {
+            VpsProxyController.clearProxy()
             SshTunnelManager.stopTunnel()
         }
     }
@@ -301,48 +369,103 @@ fun BrowserScreen(
     }
 
     Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
-        // Unified Manipulable Firefox Engine (🦊 Mozilla GeckoView or ⚡ Firefox Turbo)
-        Box(modifier = Modifier.fillMaxSize()) {
-            if (engineType == VpsEngineType.GECKO) {
-                GeckoBrowserView(
-                    url = currentUrl,
-                    profile = profile,
-                    onProgress = { loadProgress = it },
-                    onUrlChanged = { newUrl ->
-                        currentUrl = newUrl
-                        omnibarText = newUrl
-                    },
-                    onEngineReady = { ctrl ->
-                        engineController = ctrl
-                        if (currentUrl.isNotBlank()) {
-                            ctrl.loadUrl(currentUrl)
+        if (browserMode == "native_mobile") {
+            // 100% Native Mobile Android UI (0ms Lag, Touch 120Hz & Soft Keyboard)
+            Column(modifier = Modifier.fillMaxSize()) {
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    NativeMobileBrowserView(
+                        url = currentUrl,
+                        onProgress = {
+                            loadProgress = it
+                            mobileCanGoBack = engineController?.canGoBack() == true
+                            mobileCanGoForward = engineController?.canGoForward() == true
+                        },
+                        onUrlChanged = { newUrl ->
+                            currentUrl = newUrl
+                            omnibarText = newUrl
+                            mobileCanGoBack = engineController?.canGoBack() == true
+                            mobileCanGoForward = engineController?.canGoForward() == true
+                        },
+                        onEngineReady = { ctrl ->
+                            engineController = ctrl
+                            if (currentUrl.isNotBlank()) {
+                                ctrl.loadUrl(currentUrl)
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
+                MobileBrowserOmnibar(
+                    currentUrl = currentUrl,
+                    vpsHost = profile.getCleanHost(),
+                    latencyMs = latencyMs,
+                    isSocksActive = isSocksActive,
+                    browserMode = browserMode,
+                    canGoBack = mobileCanGoBack,
+                    canGoForward = mobileCanGoForward,
+                    onNavigate = { navigateTo(it) },
+                    onBack = {
+                        if (engineController?.canGoBack() == true) {
+                            engineController?.goBack()
                         }
                     },
-                    onWebCodecsUnsupported = {
-                        Toast.makeText(context, "⚡ El servidor VPS requiere WebCodecs. Conmutando a Motor Turbo...", Toast.LENGTH_LONG).show()
-                        engineType = VpsEngineType.TURBO
-                        profile.appEngine = "turbo"
-                        onSaveProfile(profile)
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                FirefoxTurboBrowserView(
-                    url = currentUrl,
-                    profile = profile,
-                    onProgress = { loadProgress = it },
-                    onUrlChanged = { newUrl ->
-                        currentUrl = newUrl
-                        omnibarText = newUrl
-                    },
-                    onEngineReady = { ctrl ->
-                        engineController = ctrl
-                        if (currentUrl.isNotBlank()) {
-                            ctrl.loadUrl(currentUrl)
+                    onForward = {
+                        if (engineController?.canGoForward() == true) {
+                            engineController?.goForward()
                         }
                     },
-                    modifier = Modifier.fillMaxSize()
+                    onRefresh = { engineController?.reload() },
+                    onToggleBrowserMode = { toggleBrowserMode() },
+                    onVerifyIp = { verifyIp() },
+                    onOpenServerManager = onOpenServerManager,
+                    modifier = Modifier.fillMaxWidth()
                 )
+            }
+        } else {
+            // Desktop Streaming Browser Engine (🦊 Mozilla GeckoView or ⚡ Firefox Turbo)
+            Box(modifier = Modifier.fillMaxSize()) {
+                if (engineType == VpsEngineType.GECKO) {
+                    GeckoBrowserView(
+                        url = currentUrl,
+                        profile = profile,
+                        onProgress = { loadProgress = it },
+                        onUrlChanged = { newUrl ->
+                            currentUrl = newUrl
+                            omnibarText = newUrl
+                        },
+                        onEngineReady = { ctrl ->
+                            engineController = ctrl
+                            if (currentUrl.isNotBlank()) {
+                                ctrl.loadUrl(currentUrl)
+                            }
+                        },
+                        onWebCodecsUnsupported = {
+                            Toast.makeText(context, "⚡ El servidor VPS requiere WebCodecs. Conmutando a Motor Turbo...", Toast.LENGTH_LONG).show()
+                            engineType = VpsEngineType.TURBO
+                            profile.appEngine = "turbo"
+                            onSaveProfile(profile)
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    FirefoxTurboBrowserView(
+                        url = currentUrl,
+                        profile = profile,
+                        onProgress = { loadProgress = it },
+                        onUrlChanged = { newUrl ->
+                            currentUrl = newUrl
+                            omnibarText = newUrl
+                        },
+                        onEngineReady = { ctrl ->
+                            engineController = ctrl
+                            if (currentUrl.isNotBlank()) {
+                                ctrl.loadUrl(currentUrl)
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
             }
         }
 
@@ -408,152 +531,155 @@ fun BrowserScreen(
             }
         }
 
-        // Virtual Mouse Trackpad Overlay
-        if (isMouseMode) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) {
-                        detectDragGestures { change, dragAmount ->
-                            change.consume()
-                            cursorX = (cursorX + dragAmount.x).coerceIn(0f, 1500f)
-                            cursorY = (cursorY + dragAmount.y).coerceIn(0f, 2500f)
+        if (browserMode != "native_mobile") {
+            // Virtual Mouse Trackpad Overlay
+            if (isMouseMode) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                cursorX = (cursorX + dragAmount.x).coerceIn(0f, 1500f)
+                                cursorY = (cursorY + dragAmount.y).coerceIn(0f, 2500f)
+                            }
+                        }
+                ) {
+                    // Floating pointer
+                    Icon(
+                        imageVector = Icons.Default.Mouse,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .offset { IntOffset(cursorX.roundToInt(), cursorY.roundToInt()) }
+                            .size(24.dp)
+                    )
+
+                    // Mouse click action buttons floating at bottom right
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(bottom = 80.dp, end = 16.dp)
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), RoundedCornerShape(12.dp))
+                            .padding(6.dp)
+                    ) {
+                        Button(
+                            onClick = { dispatchClick(cursorX, cursorY, false) },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                            modifier = Modifier.size(width = 56.dp, height = 40.dp)
+                        ) {
+                            Text("L", fontSize = 12.sp)
+                        }
+                        Spacer(modifier = Modifier.size(6.dp))
+                        Button(
+                            onClick = { dispatchClick(cursorX, cursorY, true) },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                            modifier = Modifier.size(width = 56.dp, height = 40.dp)
+                        ) {
+                            Text("R", fontSize = 12.sp)
                         }
                     }
-            ) {
-                // Floating pointer
-                Icon(
-                    imageVector = Icons.Default.Mouse,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .offset { IntOffset(cursorX.roundToInt(), cursorY.roundToInt()) }
-                        .size(24.dp)
-                )
-
-                // Mouse click action buttons floating at bottom right
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(bottom = 80.dp, end = 16.dp)
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), RoundedCornerShape(12.dp))
-                        .padding(6.dp)
-                ) {
-                    Button(
-                        onClick = { dispatchClick(cursorX, cursorY, false) },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                        modifier = Modifier.size(width = 56.dp, height = 40.dp)
-                    ) {
-                        Text("L", fontSize = 12.sp)
-                    }
-                    Spacer(modifier = Modifier.size(6.dp))
-                    Button(
-                        onClick = { dispatchClick(cursorX, cursorY, true) },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
-                        modifier = Modifier.size(width = 56.dp, height = 40.dp)
-                    ) {
-                        Text("R", fontSize = 12.sp)
-                    }
                 }
             }
-        }
 
-        // Desktop Accessory Bar
-        DesktopAccessoryBar(
-            visible = isKeyboardBarVisible,
-            onSendKey = { key ->
-                val code = when (key) {
-                    "Esc" -> KeyEvent.KEYCODE_ESCAPE
-                    "Tab" -> KeyEvent.KEYCODE_TAB
-                    "Enter" -> KeyEvent.KEYCODE_ENTER
-                    else -> null
-                }
-                if (code != null) {
-                    engineController?.dispatchKeyEvent(code)
-                } else if (key.contains("F12")) {
-                    engineController?.evaluateJavascript("window.dispatchEvent(new KeyboardEvent('keydown', {'key': 'F12', 'code': 'F12', 'keyCode': 123}));", null)
-                }
-            },
-            onSendClipboardToVps = {
-                val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                val text = cm?.primaryClip?.getItemAt(0)?.text?.toString()
-                if (!text.isNullOrBlank()) {
-                    val safeText = text.replace("'", "\\'")
-                    engineController?.evaluateJavascript("navigator.clipboard.writeText('$safeText');", null)
-                    Toast.makeText(context, "Portapapeles enviado al navegador VPS", Toast.LENGTH_SHORT).show()
-                }
-            },
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = if (!isFullscreen) 64.dp else 0.dp)
-        )
+            // Desktop Accessory Bar
+            DesktopAccessoryBar(
+                visible = isKeyboardBarVisible,
+                onSendKey = { key ->
+                    val code = when (key) {
+                        "Esc" -> KeyEvent.KEYCODE_ESCAPE
+                        "Tab" -> KeyEvent.KEYCODE_TAB
+                        "Enter" -> KeyEvent.KEYCODE_ENTER
+                        else -> null
+                    }
+                    if (code != null) {
+                        engineController?.dispatchKeyEvent(code)
+                    } else if (key.contains("F12")) {
+                        engineController?.evaluateJavascript("window.dispatchEvent(new KeyboardEvent('keydown', {'key': 'F12', 'code': 'F12', 'keyCode': 123}));", null)
+                    }
+                },
+                onSendClipboardToVps = {
+                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                    val text = cm?.primaryClip?.getItemAt(0)?.text?.toString()
+                    if (!text.isNullOrBlank()) {
+                        val safeText = text.replace("'", "\\'")
+                        engineController?.evaluateJavascript("navigator.clipboard.writeText('$safeText');", null)
+                        Toast.makeText(context, "Portapapeles enviado al navegador VPS", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = if (!isFullscreen) 64.dp else 0.dp)
+            )
 
-        // Omnibar Input Drawer / Popup
-        AnimatedVisibility(
-            visible = isOmnibarVisible,
-            enter = slideInVertically(),
-            exit = slideOutVertically(),
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.TopCenter)
-        ) {
-            Surface(
-                color = MaterialTheme.colorScheme.surface,
-                shadowElevation = 8.dp,
+            // Omnibar Input Drawer / Popup
+            AnimatedVisibility(
+                visible = isOmnibarVisible,
+                enter = slideInVertically(),
+                exit = slideOutVertically(),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(12.dp)
-                    .border(1.dp, DarkBorder, RoundedCornerShape(16.dp))
+                    .align(Alignment.TopCenter)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                Surface(
+                    color = MaterialTheme.colorScheme.surface,
+                    shadowElevation = 8.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp)
+                        .border(1.dp, DarkBorder, RoundedCornerShape(16.dp))
                 ) {
-                    Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    OutlinedTextField(
-                        value = omnibarText,
-                        onValueChange = { omnibarText = it },
-                        placeholder = { Text("Buscar con privacidad o escribir URL...") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-                        keyboardActions = KeyboardActions(onGo = { navigateTo(omnibarText) }),
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = 8.dp)
-                    )
-                    IconButton(onClick = { isOmnibarVisible = false }) {
-                        Icon(Icons.Default.Close, contentDescription = "Cerrar")
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        OutlinedTextField(
+                            value = omnibarText,
+                            onValueChange = { omnibarText = it },
+                            placeholder = { Text("Buscar con privacidad o escribir URL...") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                            keyboardActions = KeyboardActions(onGo = { navigateTo(omnibarText) }),
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 8.dp)
+                        )
+                        IconButton(onClick = { isOmnibarVisible = false }) {
+                            Icon(Icons.Default.Close, contentDescription = "Cerrar")
+                        }
                     }
                 }
             }
-        }
 
-        // Floating Pill Toolbar
-        FloatingPillToolbar(
-            visible = isToolbarVisible && !isFullscreen,
-            isMouseMode = isMouseMode,
-            isKeyboardBarVisible = isKeyboardBarVisible,
-            latencyMs = latencyMs,
-            isTunnelActive = isTunnelActive,
-            activeRouteName = activeRouteName,
-            currentEngineBadge = engineType.badge,
-            onToggleEnginePicker = { showEngineDialog = true },
-            onToggleRoutePicker = { showRouteDialog = true },
-            onBack = {
-                if (engineController?.canGoBack() == true) engineController?.goBack()
-            },
-            onForward = {
-                if (engineController?.canGoForward() == true) engineController?.goForward()
-            },
-            onRefresh = { engineController?.reload() },
-            onToggleInputMode = { isMouseMode = !isMouseMode },
-            onToggleKeyboardBar = { isKeyboardBarVisible = !isKeyboardBarVisible },
-            onToggleFullscreen = { isFullscreen = !isFullscreen },
-            onOpenServerManager = onOpenServerManager,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 12.dp)
-        )
+            // Floating Pill Toolbar
+            FloatingPillToolbar(
+                visible = isToolbarVisible && !isFullscreen,
+                isMouseMode = isMouseMode,
+                isKeyboardBarVisible = isKeyboardBarVisible,
+                latencyMs = latencyMs,
+                isTunnelActive = isTunnelActive,
+                activeRouteName = activeRouteName,
+                currentEngineBadge = engineType.badge,
+                onToggleEnginePicker = { showEngineDialog = true },
+                onToggleRoutePicker = { showRouteDialog = true },
+                onToggleBrowserMode = { toggleBrowserMode() },
+                onBack = {
+                    if (engineController?.canGoBack() == true) engineController?.goBack()
+                },
+                onForward = {
+                    if (engineController?.canGoForward() == true) engineController?.goForward()
+                },
+                onRefresh = { engineController?.reload() },
+                onToggleInputMode = { isMouseMode = !isMouseMode },
+                onToggleKeyboardBar = { isKeyboardBarVisible = !isKeyboardBarVisible },
+                onToggleFullscreen = { isFullscreen = !isFullscreen },
+                onOpenServerManager = onOpenServerManager,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 12.dp)
+            )
+        }
 
         // Route Switcher & Latency Benchmark Dialog
         if (showRouteDialog) {

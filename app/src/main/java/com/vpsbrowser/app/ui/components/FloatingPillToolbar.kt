@@ -25,6 +25,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Mouse
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.TouchApp
@@ -59,6 +60,7 @@ fun FloatingPillToolbar(
     currentEngineBadge: String = "⚡ TURBO",
     onToggleEnginePicker: () -> Unit = {},
     onToggleRoutePicker: () -> Unit = {},
+    onToggleBrowserMode: () -> Unit = {},
     onBack: () -> Unit,
     onForward: () -> Unit,
     onRefresh: () -> Unit,
@@ -186,6 +188,22 @@ fun FloatingPillToolbar(
                         imageVector = Icons.Default.Fullscreen,
                         contentDescription = "Pantalla Completa",
                         tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                // Switch to Native Mobile Mode
+                IconButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onToggleBrowserMode()
+                    },
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PhoneAndroid,
+                        contentDescription = "Cambiar a Modo Móvil Nativo",
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(18.dp)
                     )
                 }
