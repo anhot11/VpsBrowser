@@ -27,6 +27,7 @@ fun GeckoBrowserView(
     onProgress: (Int) -> Unit,
     onUrlChanged: (String) -> Unit,
     onEngineReady: (VpsEngineController) -> Unit,
+    onWebCodecsUnsupported: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -139,6 +140,10 @@ fun GeckoBrowserView(
                 newUrl: String?,
                 perms: List<GeckoSession.PermissionDelegate.ContentPermission>
             ) {
+                if (newUrl?.contains("webcodecs_unsupported") == true) {
+                    onWebCodecsUnsupported?.invoke()
+                    return
+                }
                 newUrl?.let {
                     currentUrl = it
                     onUrlChanged(it)
@@ -162,6 +167,21 @@ fun GeckoBrowserView(
             override fun onPageStop(session: GeckoSession, success: Boolean) {
                 onProgress(100)
                 controller.injectTurboOptimizations()
+
+                val detectWebCodecsJs = """
+                    (function() {
+                        var check = function() {
+                            var text = (document.body ? document.body.innerText : '') + ' ' + (document.getElementById('status') ? document.getElementById('status').innerText : '');
+                            if (text.indexOf('WebCodecs') !== -1 || text.indexOf('VideoDecoder') !== -1) {
+                                window.location.hash = 'webcodecs_unsupported';
+                            }
+                        };
+                        check();
+                        setTimeout(check, 800);
+                        setTimeout(check, 2000);
+                    })();
+                """.trimIndent()
+                controller.evaluateJavascript(detectWebCodecsJs)
             }
 
             override fun onProgressChange(session: GeckoSession, progress: Int) {

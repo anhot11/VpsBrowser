@@ -318,6 +318,12 @@ fun BrowserScreen(
                             ctrl.loadUrl(currentUrl)
                         }
                     },
+                    onWebCodecsUnsupported = {
+                        Toast.makeText(context, "⚡ El servidor VPS requiere WebCodecs. Conmutando a Motor Turbo...", Toast.LENGTH_LONG).show()
+                        engineType = VpsEngineType.TURBO
+                        profile.appEngine = "turbo"
+                        onSaveProfile(profile)
+                    },
                     modifier = Modifier.fillMaxSize()
                 )
             } else {

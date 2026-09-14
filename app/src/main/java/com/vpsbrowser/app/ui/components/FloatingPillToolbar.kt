@@ -6,13 +6,17 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -33,10 +37,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vpsbrowser.app.ui.theme.DarkBorder
@@ -52,7 +56,7 @@ fun FloatingPillToolbar(
     latencyMs: Long?,
     isTunnelActive: Boolean,
     activeRouteName: String = "⚡ Directo",
-    currentEngineBadge: String = "🦊 GECKO",
+    currentEngineBadge: String = "⚡ TURBO",
     onToggleEnginePicker: () -> Unit = {},
     onToggleRoutePicker: () -> Unit = {},
     onBack: () -> Unit,
@@ -73,18 +77,22 @@ fun FloatingPillToolbar(
         modifier = modifier
     ) {
         Surface(
-            shape = RoundedCornerShape(28.dp),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
             tonalElevation = 8.dp,
             shadowElevation = 10.dp,
             modifier = Modifier
-                .border(1.dp, DarkBorder, RoundedCornerShape(28.dp))
+                .height(44.dp)
+                .border(1.dp, DarkBorder, RoundedCornerShape(24.dp))
                 .padding(horizontal = 4.dp, vertical = 2.dp)
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 6.dp)
             ) {
                 // Back
                 IconButton(
@@ -92,13 +100,13 @@ fun FloatingPillToolbar(
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         onBack()
                     },
-                    modifier = Modifier.size(38.dp)
+                    modifier = Modifier.size(34.dp)
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Atrás",
                         tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
 
@@ -108,13 +116,13 @@ fun FloatingPillToolbar(
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         onForward()
                     },
-                    modifier = Modifier.size(38.dp)
+                    modifier = Modifier.size(34.dp)
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                         contentDescription = "Adelante",
                         tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
 
@@ -124,13 +132,13 @@ fun FloatingPillToolbar(
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         onRefresh()
                     },
-                    modifier = Modifier.size(38.dp)
+                    modifier = Modifier.size(34.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Refresh,
                         contentDescription = "Recargar",
                         tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
 
@@ -140,13 +148,13 @@ fun FloatingPillToolbar(
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         onToggleInputMode()
                     },
-                    modifier = Modifier.size(38.dp)
+                    modifier = Modifier.size(34.dp)
                 ) {
                     Icon(
                         imageVector = if (isMouseMode) Icons.Default.Mouse else Icons.Default.TouchApp,
                         contentDescription = if (isMouseMode) "Modo Ratón" else "Modo Táctil",
                         tint = if (isMouseMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
 
@@ -156,13 +164,13 @@ fun FloatingPillToolbar(
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         onToggleKeyboardBar()
                     },
-                    modifier = Modifier.size(38.dp)
+                    modifier = Modifier.size(34.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Keyboard,
                         contentDescription = "Teclado PC",
                         tint = if (isKeyboardBarVisible) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
 
@@ -172,13 +180,13 @@ fun FloatingPillToolbar(
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         onToggleFullscreen()
                     },
-                    modifier = Modifier.size(38.dp)
+                    modifier = Modifier.size(34.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Fullscreen,
                         contentDescription = "Pantalla Completa",
                         tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
 
@@ -186,19 +194,23 @@ fun FloatingPillToolbar(
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
+                        .height(28.dp)
+                        .clip(RoundedCornerShape(10.dp))
                         .clickable {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             onToggleEnginePicker()
                         }
-                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f))
-                        .padding(horizontal = 7.dp, vertical = 4.dp)
+                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
+                        .padding(horizontal = 8.dp)
                 ) {
                     Text(
                         text = currentEngineBadge,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
@@ -213,17 +225,18 @@ fun FloatingPillToolbar(
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
+                        .height(28.dp)
+                        .clip(RoundedCornerShape(10.dp))
                         .clickable {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             onToggleRoutePicker()
                         }
                         .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                        .padding(horizontal = 8.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(7.dp)
+                            .size(6.dp)
                             .clip(CircleShape)
                             .background(statusColor)
                     )
@@ -231,13 +244,18 @@ fun FloatingPillToolbar(
                     Text(
                         text = if (latencyMs != null && latencyMs >= 0) "${latencyMs}ms" else "Offline",
                         fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        softWrap = false
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = activeRouteName,
                         fontSize = 10.sp,
-                        color = MaterialTheme.colorScheme.primary
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
@@ -247,13 +265,13 @@ fun FloatingPillToolbar(
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         onOpenServerManager()
                     },
-                    modifier = Modifier.size(38.dp)
+                    modifier = Modifier.size(34.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Settings,
                         contentDescription = "Gestión VPS",
                         tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }

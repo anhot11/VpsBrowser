@@ -6,22 +6,22 @@ enum class VpsEngineType(
     val subtitle: String,
     val badge: String
 ) {
+    TURBO(
+        id = "turbo",
+        title = "⚡ Firefox Turbo Client (Recomendado)",
+        subtitle = "Aceleración de hardware total y soporte nativo WebCodecs a 60 FPS (compatible con Selkies, KasmVNC y streaming H.264/VP9 sin retardo).",
+        badge = "⚡ TURBO"
+    ),
     GECKO(
         id = "gecko",
         title = "🦊 Mozilla GeckoView",
-        subtitle = "Motor Firefox real de Mozilla integrado. Aceleración GPU WebRender, control total de DOM y privacidad nativa.",
+        subtitle = "Motor Firefox oficial de Mozilla integrado (WebRender GPU). Para navegación estándar. No compatible con streaming WebCodecs.",
         badge = "🦊 GECKO"
-    ),
-    TURBO(
-        id = "turbo",
-        title = "⚡ Firefox Turbo Client",
-        subtitle = "Motor ultraligero de baja latencia con manipulación directa de canvas a 60 FPS e intercepción táctil sin retraso.",
-        badge = "⚡ TURBO"
     );
 
     companion object {
         fun fromId(id: String): VpsEngineType {
-            return entries.find { it.id.equals(id, ignoreCase = true) } ?: GECKO
+            return entries.find { it.id.equals(id, ignoreCase = true) } ?: TURBO
         }
     }
 }
