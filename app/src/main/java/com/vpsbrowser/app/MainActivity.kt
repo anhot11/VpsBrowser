@@ -51,6 +51,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        com.vpsbrowser.app.engine.IncognitoManager.purgeIncognitoData(null)
         VpsProxyController.clearProxy()
         SshTunnelManager.stopTunnel()
         super.onDestroy()

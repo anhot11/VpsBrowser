@@ -48,6 +48,8 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -84,6 +86,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vpsbrowser.app.security.SecurityManager
 import com.vpsbrowser.app.ui.theme.DarkBorder
+import com.vpsbrowser.app.ui.theme.IncognitoPurple
+import com.vpsbrowser.app.ui.theme.IncognitoPurpleAccent
+import com.vpsbrowser.app.ui.theme.IncognitoPurpleBadge
+import com.vpsbrowser.app.ui.theme.IncognitoPurpleBorder
+import com.vpsbrowser.app.ui.theme.IncognitoPurpleDark
+import com.vpsbrowser.app.ui.theme.IncognitoPurplePill
 import com.vpsbrowser.app.ui.theme.StatusGreen
 import com.vpsbrowser.app.ui.theme.StatusRed
 import com.vpsbrowser.app.ui.theme.StatusYellow
@@ -99,6 +107,8 @@ fun MobileBrowserOmnibar(
     browserMode: String, // "native_mobile" or "remote_desktop"
     canGoBack: Boolean,
     canGoForward: Boolean,
+    isIncognito: Boolean = false,
+    onToggleIncognito: () -> Unit = {},
     onNavigate: (String) -> Unit,
     onBack: () -> Unit,
     onForward: () -> Unit,
@@ -159,12 +169,16 @@ fun MobileBrowserOmnibar(
 
     Surface(
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+        color = if (isIncognito) IncognitoPurpleDark.copy(alpha = 0.98f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
         tonalElevation = 8.dp,
         shadowElevation = 12.dp,
         modifier = modifier
             .fillMaxWidth()
-            .border(1.dp, DarkBorder, RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+            .border(
+                1.dp,
+                if (isIncognito) IncognitoPurpleBorder else DarkBorder,
+                RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+            )
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             if (isEditing) {
@@ -178,18 +192,23 @@ fun MobileBrowserOmnibar(
                     Icon(
                         imageVector = Icons.Default.Search,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = if (isIncognito) IncognitoPurpleBadge else MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(start = 6.dp).size(20.dp)
                     )
 
                     OutlinedTextField(
                         value = inputText,
                         onValueChange = { inputText = it },
-                        placeholder = { Text("Buscar en la web o ingresar URL...", fontSize = 14.sp) },
+                        placeholder = {
+                            Text(
+                                if (isIncognito) "Buscar con Incógnito (RAM pura)..." else "Buscar en la web o ingresar URL...",
+                                fontSize = 14.sp
+                            )
+                        },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = DarkBorder
+                            focusedBorderColor = if (isIncognito) IncognitoPurpleBorder else MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = if (isIncognito) IncognitoPurple.copy(alpha = 0.5f) else DarkBorder
                         ),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
                         keyboardActions = KeyboardActions(onGo = {
@@ -216,7 +235,11 @@ fun MobileBrowserOmnibar(
                             inputText = currentUrl
                         }
                     ) {
-                        Text("Cancelar", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        Text(
+                            "Cancelar",
+                            fontSize = 12.sp,
+                            color = if (isIncognito) IncognitoPurpleBadge else MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
             } else {
@@ -240,7 +263,11 @@ fun MobileBrowserOmnibar(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Atrás",
-                            tint = if (canGoBack) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                            tint = if (canGoBack) {
+                                if (isIncognito) IncognitoPurpleAccent else MaterialTheme.colorScheme.onSurface
+                            } else {
+                                if (isIncognito) IncognitoPurple.copy(alpha = 0.35f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                            },
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -257,7 +284,11 @@ fun MobileBrowserOmnibar(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                             contentDescription = "Adelante",
-                            tint = if (canGoForward) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                            tint = if (canGoForward) {
+                                if (isIncognito) IncognitoPurpleAccent else MaterialTheme.colorScheme.onSurface
+                            } else {
+                                if (isIncognito) IncognitoPurple.copy(alpha = 0.35f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                            },
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -270,20 +301,35 @@ fun MobileBrowserOmnibar(
                             .height(38.dp)
                             .padding(horizontal = 4.dp)
                             .clip(RoundedCornerShape(19.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
-                            .border(1.dp, DarkBorder, RoundedCornerShape(19.dp))
+                            .background(
+                                if (isIncognito) IncognitoPurplePill else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+                            )
+                            .border(
+                                1.dp,
+                                if (isIncognito) IncognitoPurpleBorder.copy(alpha = 0.8f) else DarkBorder,
+                                RoundedCornerShape(19.dp)
+                            )
                             .clickable {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 isEditing = true
                             }
                             .padding(horizontal = 10.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = null,
-                            tint = if (currentUrl.startsWith("https://")) StatusGreen else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(14.dp)
-                        )
+                        if (isIncognito) {
+                            Icon(
+                                imageVector = Icons.Default.VisibilityOff,
+                                contentDescription = "Modo Incógnito (RAM)",
+                                tint = IncognitoPurpleBadge,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = null,
+                                tint = if (currentUrl.startsWith("https://")) StatusGreen else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
 
                         Spacer(modifier = Modifier.width(6.dp))
 
@@ -291,23 +337,44 @@ fun MobileBrowserOmnibar(
                             text = displayHost,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = if (isIncognito) Color.White else MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
                         )
+
+                        if (isIncognito) {
+                            // Incognito RAM Badge
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(IncognitoPurple.copy(alpha = 0.3f))
+                                    .padding(horizontal = 5.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "RAM",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = IncognitoPurpleBadge
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
 
                         // VPS Shield Badge inside the pill
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
-                            .clickable {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                showShieldDialog = true
-                            }
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                .background(
+                                    if (isIncognito) IncognitoPurple.copy(alpha = 0.25f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                )
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    showShieldDialog = true
+                                }
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
                             Box(
                                 modifier = Modifier
@@ -320,7 +387,7 @@ fun MobileBrowserOmnibar(
                                 text = "VPS",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
+                                color = if (isIncognito) IncognitoPurpleBadge else MaterialTheme.colorScheme.primary
                             )
                         }
                     }
@@ -336,12 +403,12 @@ fun MobileBrowserOmnibar(
                         Icon(
                             imageVector = Icons.Default.Refresh,
                             contentDescription = "Recargar",
-                            tint = MaterialTheme.colorScheme.onSurface,
+                            tint = if (isIncognito) IncognitoPurpleAccent else MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(18.dp)
                         )
                     }
 
-                    // 3-Dots Action Menu (Configuración, Modo PC, Descargas, Favoritos, Historial)
+                    // 3-Dots Action Menu (Incógnito, Modo PC, Favoritos, Historial, Descargas, Configuración)
                     Box {
                         IconButton(
                             onClick = {
@@ -353,7 +420,7 @@ fun MobileBrowserOmnibar(
                             Icon(
                                 imageVector = Icons.Default.MoreVert,
                                 contentDescription = "Menú de Opciones",
-                                tint = MaterialTheme.colorScheme.onSurface,
+                                tint = if (isIncognito) IncognitoPurpleBadge else MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.size(20.dp)
                             )
                         }
@@ -362,6 +429,54 @@ fun MobileBrowserOmnibar(
                             expanded = showMenu,
                             onDismissRequest = { showMenu = false }
                         ) {
+                            // 0. Modo Incógnito (RAM Pura)
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                if (isIncognito) "🕵️ Incógnito (RAM Pura)" else "🕵️ Modo Incógnito",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp,
+                                                color = if (isIncognito) IncognitoPurpleAccent else MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = if (isIncognito) IncognitoPurple else MaterialTheme.colorScheme.surfaceVariant
+                                            ) {
+                                                Text(
+                                                    text = if (isIncognito) "ACTIVO" else "OFF",
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isIncognito) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            if (isIncognito) "Caché y cookies solo en RAM volátil (0 disco)" else "Desactiva escrituras en disco de WebView",
+                                            fontSize = 10.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = if (isIncognito) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                        contentDescription = null,
+                                        tint = if (isIncognito) IncognitoPurple else MaterialTheme.colorScheme.primary
+                                    )
+                                },
+                                onClick = {
+                                    showMenu = false
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onToggleIncognito()
+                                }
+                            )
+
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
                             // 1. Modo PC / Móvil
                             DropdownMenuItem(
                                 text = {

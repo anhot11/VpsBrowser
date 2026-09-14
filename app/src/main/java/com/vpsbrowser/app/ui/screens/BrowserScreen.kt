@@ -163,6 +163,7 @@ fun BrowserScreen(
     // Native Mobile vs Remote Desktop Mode
     var browserMode by remember { mutableStateOf(profile.browserMode.ifBlank { "native_mobile" }) }
     var isSocksActive by remember { mutableStateOf(false) }
+    var isIncognito by remember { mutableStateOf(false) }
     var mobileCanGoBack by remember { mutableStateOf(false) }
     var mobileCanGoForward by remember { mutableStateOf(false) }
 
@@ -353,6 +354,17 @@ fun BrowserScreen(
         engineController?.loadUrl(target)
     }
 
+    fun toggleIncognito() {
+        val newState = !isIncognito
+        isIncognito = newState
+        if (newState) {
+            Toast.makeText(context, "🕵️ Modo Incógnito Activado: Memoria RAM pura (Cero disco)", Toast.LENGTH_SHORT).show()
+        } else {
+            com.vpsbrowser.app.engine.IncognitoManager.purgeIncognitoData(null)
+            Toast.makeText(context, "Modo Estándar: Datos de memoria RAM purgados", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     BackHandler(enabled = browserMode == "native_mobile" && (mobileCanGoBack || engineController?.canGoBack() == true)) {
         engineController?.goBack()
     }
@@ -390,6 +402,7 @@ fun BrowserScreen(
                 Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     NativeMobileBrowserView(
                         url = currentUrl,
+                        isIncognito = isIncognito,
                         onProgress = {
                             loadProgress = it
                             mobileCanGoBack = engineController?.canGoBack() == true
@@ -398,7 +411,7 @@ fun BrowserScreen(
                         onUrlChanged = { newUrl ->
                             currentUrl = newUrl
                             omnibarText = newUrl
-                            if (newUrl.isNotBlank() && !newUrl.startsWith("about:") && !newUrl.contains(":3000")) {
+                            if (!isIncognito && newUrl.isNotBlank() && !newUrl.startsWith("about:") && !newUrl.contains(":3000")) {
                                 securityManager.addHistory(pageTitle.ifBlank { newUrl }, newUrl)
                             }
                             mobileCanGoBack = engineController?.canGoBack() == true
@@ -406,7 +419,7 @@ fun BrowserScreen(
                         },
                         onTitleChanged = { title ->
                             pageTitle = title
-                            if (currentUrl.isNotBlank() && !currentUrl.startsWith("about:") && !currentUrl.contains(":3000")) {
+                            if (!isIncognito && currentUrl.isNotBlank() && !currentUrl.startsWith("about:") && !currentUrl.contains(":3000")) {
                                 securityManager.addHistory(title, currentUrl)
                             }
                         },
@@ -429,6 +442,8 @@ fun BrowserScreen(
                     browserMode = browserMode,
                     canGoBack = mobileCanGoBack,
                     canGoForward = mobileCanGoForward,
+                    isIncognito = isIncognito,
+                    onToggleIncognito = { toggleIncognito() },
                     onNavigate = { navigateTo(it) },
                     onBack = {
                         if (engineController?.canGoBack() == true) {

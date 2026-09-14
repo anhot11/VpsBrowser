@@ -28,6 +28,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 @Composable
 fun NativeMobileBrowserView(
     url: String,
+    isIncognito: Boolean = false,
     onProgress: (Int) -> Unit,
     onUrlChanged: (String) -> Unit,
     onTitleChanged: ((String) -> Unit)? = null,
@@ -117,6 +118,15 @@ fun NativeMobileBrowserView(
         }
     }
 
+    LaunchedEffect(isIncognito) {
+        webViewRef?.let { wv ->
+            IncognitoManager.applyIncognitoSettings(wv, isIncognito)
+            if (!isIncognito) {
+                IncognitoManager.purgeIncognitoData(wv)
+            }
+        }
+    }
+
     AndroidView(
         factory = { ctx ->
             WebView(ctx).apply {
@@ -160,6 +170,9 @@ fun NativeMobileBrowserView(
                     userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile; rv:130.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
                     cacheMode = WebSettings.LOAD_DEFAULT
                 }
+
+                // Pure RAM Incognito configuration
+                IncognitoManager.applyIncognitoSettings(this, isIncognito)
 
                 webChromeClient = object : WebChromeClient() {
                     override fun onProgressChanged(view: WebView?, newProgress: Int) {
@@ -259,6 +272,9 @@ fun NativeMobileBrowserView(
 
     DisposableEffect(Unit) {
         onDispose {
+            if (isIncognito) {
+                IncognitoManager.purgeIncognitoData(webViewRef)
+            }
             webViewRef?.stopLoading()
             webViewRef?.destroy()
             webViewRef = null
