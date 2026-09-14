@@ -12,6 +12,7 @@ object SshTunnelManager {
     private var activeSession: Session? = null
     private var localPort: Int = -1
     private var activeSocksPort: Int = -1
+    private var socksServer: SshSocksServer? = null
 
     private fun createSession(profile: VpsProfile): Session {
         val jsch = JSch()
@@ -64,12 +65,15 @@ object SshTunnelManager {
             }
 
             val session = activeSession!!
-            if (activeSocksPort > 0) {
+            if (activeSocksPort > 0 && socksServer?.isRunning() == true) {
                 return@withContext Result.success(activeSocksPort)
             }
 
+            socksServer?.stop()
             val freePort = findFreePort()
-            session.setPortForwardingD(freePort)
+            val server = SshSocksServer(session, freePort)
+            server.start()
+            socksServer = server
             activeSocksPort = freePort
 
             Result.success(freePort)
@@ -80,11 +84,11 @@ object SshTunnelManager {
     }
 
     fun isTunnelActive(): Boolean {
-        return activeSession?.isConnected == true && (localPort > 0 || activeSocksPort > 0)
+        return activeSession?.isConnected == true && (localPort > 0 || (activeSocksPort > 0 && socksServer?.isRunning() == true))
     }
 
     fun isSocksProxyActive(): Boolean {
-        return activeSession?.isConnected == true && activeSocksPort > 0
+        return activeSession?.isConnected == true && activeSocksPort > 0 && socksServer?.isRunning() == true
     }
 
     fun getSocksPort(): Int = activeSocksPort
@@ -94,6 +98,13 @@ object SshTunnelManager {
     }
 
     fun stopTunnel() {
+        try {
+            socksServer?.stop()
+        } catch (e: Exception) {
+            // Ignore
+        }
+        socksServer = null
+
         try {
             activeSession?.disconnect()
         } catch (e: Exception) {
