@@ -16,3 +16,6 @@ local.properties
 server/config/
 *.apk
 VPS-Browser-debug-apk/
+backup_src/
+*.tar.gz
+*.zip
