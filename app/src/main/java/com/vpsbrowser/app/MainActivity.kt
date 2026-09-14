@@ -151,6 +151,12 @@ fun VPSBrowserApp(securityManager: SecurityManager) {
                     profile = activeProfile!!,
                     isTunnelActive = SshTunnelManager.isTunnelActive(),
                     onBack = { currentScreen = AppScreen.BROWSER },
+                    onOpenProfiles = { currentScreen = AppScreen.PROFILES },
+                    onSaveProfile = { updated ->
+                        securityManager.saveProfile(updated)
+                        activeProfile = updated
+                        profiles = securityManager.getAllProfiles()
+                    },
                     onEnvironmentDestroyed = {
                         securityManager.deleteProfile(activeProfile!!.id)
                         profiles = securityManager.getAllProfiles()
