@@ -105,4 +105,71 @@ class SecurityManager(context: Context) {
     fun setForceSshTunnel(enabled: Boolean) {
         securePrefs.edit().putBoolean(KEY_FORCE_SSH_TUNNEL, enabled).apply()
     }
+
+    fun getBookmarks(): MutableList<BookmarkItem> {
+        val json = securePrefs.getString("secure_browser_bookmarks", null) ?: return mutableListOf()
+        val type = object : TypeToken<MutableList<BookmarkItem>>() {}.type
+        return try {
+            gson.fromJson(json, type) ?: mutableListOf()
+        } catch (e: Exception) {
+            mutableListOf()
+        }
+    }
+
+    fun addBookmark(title: String, url: String) {
+        if (url.isBlank()) return
+        val list = getBookmarks()
+        list.removeAll { it.url.trim().equals(url.trim(), ignoreCase = true) }
+        list.add(0, BookmarkItem(title = title.ifBlank { url }, url = url.trim()))
+        val json = gson.toJson(list)
+        securePrefs.edit().putString("secure_browser_bookmarks", json).apply()
+    }
+
+    fun deleteBookmark(id: String) {
+        val list = getBookmarks()
+        list.removeAll { it.id == id }
+        val json = gson.toJson(list)
+        securePrefs.edit().putString("secure_browser_bookmarks", json).apply()
+    }
+
+    fun getHistory(): MutableList<HistoryItem> {
+        val json = securePrefs.getString("secure_browser_history", null) ?: return mutableListOf()
+        val type = object : TypeToken<MutableList<HistoryItem>>() {}.type
+        return try {
+            gson.fromJson(json, type) ?: mutableListOf()
+        } catch (e: Exception) {
+            mutableListOf()
+        }
+    }
+
+    fun addHistory(title: String, url: String) {
+        if (url.isBlank() || url.startsWith("about:") || url.startsWith("data:")) return
+        val list = getHistory()
+        list.removeAll { it.url.trim().equals(url.trim(), ignoreCase = true) }
+        list.add(0, HistoryItem(title = title.ifBlank { url }, url = url.trim()))
+        if (list.size > 150) {
+            list.subList(150, list.size).clear()
+        }
+        val json = gson.toJson(list)
+        securePrefs.edit().putString("secure_browser_history", json).apply()
+    }
+
+    fun clearHistory() {
+        securePrefs.edit().remove("secure_browser_history").apply()
+    }
 }
+
+data class BookmarkItem(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val title: String,
+    val url: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+data class HistoryItem(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val title: String,
+    val url: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
+

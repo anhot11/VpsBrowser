@@ -124,6 +124,8 @@ fun BrowserScreen(
     var engineController by remember { mutableStateOf<VpsEngineController?>(null) }
     var showEngineDialog by remember { mutableStateOf(false) }
     var currentUrl by remember { mutableStateOf("") }
+    var pageTitle by remember { mutableStateOf("") }
+    val securityManager = remember { com.vpsbrowser.app.security.SecurityManager(context) }
     var omnibarText by remember { mutableStateOf("") }
     var isOmnibarVisible by remember { mutableStateOf(false) }
 
@@ -169,8 +171,21 @@ fun BrowserScreen(
         connectionError = null
         scope.launch {
             if (browserMode == "native_mobile") {
+                if (SshTunnelManager.isSocksProxyActive()) {
+                    isSocksActive = true
+                    isTunnelActive = true
+                    activeRouteName = "🛡️ Móvil VPS"
+                    val target = if (currentUrl.isBlank() || currentUrl.startsWith("http://127.0.0.1") || currentUrl.contains(":3000")) {
+                        if (searchEngineUrl.isNotBlank()) searchEngineUrl else "https://www.google.com"
+                    } else {
+                        currentUrl
+                    }
+                    currentUrl = target
+                    omnibarText = target
+                    return@launch
+                }
                 isConnectingTunnel = true
-                activeRouteName = "🛡️ Túnel SOCKS5..."
+                activeRouteName = "🛡️ Túnel Seguro..."
                 val socksRes = SshTunnelManager.startSocksProxy(profile)
                 isConnectingTunnel = false
                 socksRes.onSuccess { socksPort ->
@@ -344,8 +359,8 @@ fun BrowserScreen(
 
     DisposableEffect(Unit) {
         onDispose {
-            VpsProxyController.clearProxy()
-            SshTunnelManager.stopTunnel()
+            // Preserve tunnel when switching between screens in MainActivity.
+            // MainActivity.onDestroy() handles full cleanup on app exit.
         }
     }
 
@@ -383,8 +398,17 @@ fun BrowserScreen(
                         onUrlChanged = { newUrl ->
                             currentUrl = newUrl
                             omnibarText = newUrl
+                            if (newUrl.isNotBlank() && !newUrl.startsWith("about:") && !newUrl.contains(":3000")) {
+                                securityManager.addHistory(pageTitle.ifBlank { newUrl }, newUrl)
+                            }
                             mobileCanGoBack = engineController?.canGoBack() == true
                             mobileCanGoForward = engineController?.canGoForward() == true
+                        },
+                        onTitleChanged = { title ->
+                            pageTitle = title
+                            if (currentUrl.isNotBlank() && !currentUrl.startsWith("about:") && !currentUrl.contains(":3000")) {
+                                securityManager.addHistory(title, currentUrl)
+                            }
                         },
                         onEngineReady = { ctrl ->
                             engineController = ctrl
@@ -398,6 +422,7 @@ fun BrowserScreen(
 
                 MobileBrowserOmnibar(
                     currentUrl = currentUrl,
+                    pageTitle = pageTitle,
                     vpsHost = profile.getCleanHost(),
                     latencyMs = latencyMs,
                     isSocksActive = isSocksActive,
