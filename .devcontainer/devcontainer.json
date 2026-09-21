@@ -8,9 +8,6 @@
     },
     "ghcr.io/devcontainers/features/github-cli:1": {
       "version": "latest"
-    },
-    "ghcr.io/devcontainers/features/sshd:1": {
-      "version": "latest"
     }
   },
   "forwardPorts": [3000, 8080],
@@ -26,7 +23,7 @@
       "visibility": "public"
     }
   },
-  "postCreateCommand": "bash server/codespace_startup.sh",
-  "postStartCommand": "bash server/codespace_startup.sh",
+  "postCreateCommand": "nohup bash server/codespace_startup.sh >/tmp/startup.log 2>&1 &",
+  "postStartCommand": "nohup bash server/codespace_startup.sh >/tmp/startup.log 2>&1 &",
   "postAttachCommand": "gh codespace ports visibility 3000:public -c $CODESPACE_NAME 2>/dev/null || true"
 }

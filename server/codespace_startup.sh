@@ -15,11 +15,27 @@ if [ -f /etc/tinyproxy/tinyproxy.conf ]; then
     sudo service tinyproxy restart 2>/dev/null || sudo systemctl restart tinyproxy 2>/dev/null || tinyproxy -c /etc/tinyproxy/tinyproxy.conf 2>/dev/null || true
 fi
 
-# 2. Si Docker está instalado y disponible, mantener Firefox de respaldo en puerto 3000
-if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-    if [ ! "$(docker ps -q -f name=vps-firefox 2>/dev/null)" ]; then
-        if [ "$(docker ps -aq -f status=exited -f name=vps-firefox 2>/dev/null)" ]; then
-            docker start vps-firefox || true
+# 2. Si Docker está instalado y disponible, iniciar Firefox Desktop en puerto 3000
+if command -v docker >/dev/null 2>&1 || sudo docker info >/dev/null 2>&1; then
+    DOCKER_BIN="docker"
+    if ! docker info >/dev/null 2>&1; then
+        DOCKER_BIN="sudo docker"
+    fi
+    if [ ! "$($DOCKER_BIN ps -q -f name=vps-firefox 2>/dev/null)" ]; then
+        if [ "$($DOCKER_BIN ps -aq -f status=exited -f name=vps-firefox 2>/dev/null)" ]; then
+            echo "Reanudando contenedor vps-firefox..."
+            $DOCKER_BIN start vps-firefox || true
+        else
+            echo "Descargando e iniciando vps-firefox en puerto 3000..."
+            $DOCKER_BIN run -d \
+              --name vps-firefox \
+              --shm-size="2gb" \
+              -p 3000:3000 \
+              -e PUID=1000 \
+              -e PGID=1000 \
+              -e TZ=Etc/UTC \
+              --restart unless-stopped \
+              lscr.io/linuxserver/firefox:latest || true
         fi
     fi
 fi
