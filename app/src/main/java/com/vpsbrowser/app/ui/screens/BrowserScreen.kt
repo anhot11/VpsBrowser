@@ -33,12 +33,16 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Lock
@@ -50,12 +54,14 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -107,6 +113,7 @@ import kotlinx.coroutines.launch
 import java.net.URLEncoder
 import kotlin.math.roundToInt
 
+@OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun BrowserScreen(
@@ -175,6 +182,7 @@ fun BrowserScreen(
     var isIncognito by remember { mutableStateOf(false) }
     var mobileCanGoBack by remember { mutableStateOf(false) }
     var mobileCanGoForward by remember { mutableStateOf(false) }
+    var isDesktopMode by remember { mutableStateOf(false) }
 
     // Adaptive Multi-Path Router: Direct (Escudo IP) -> SSH Tunnel -> Cloudflare Tunnel -> SOCKS5
     fun connect() {
@@ -361,13 +369,23 @@ fun BrowserScreen(
     }
 
     fun toggleBrowserMode() {
+        if (profile.isCodespace()) {
+            isDesktopMode = !isDesktopMode
+            engineController?.setDesktopMode(isDesktopMode)
+            Toast.makeText(
+                context,
+                if (isDesktopMode) "💻 Modo Escritorio Activado" else "📱 Modo Móvil Activado",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
         val newMode = if (browserMode == "native_mobile") "remote_desktop" else "native_mobile"
         browserMode = newMode
         profile.browserMode = newMode
         onSaveProfile(profile)
         if (newMode == "native_mobile") {
             if (currentUrl.contains(":3000") || currentUrl.startsWith("http://127.0.0.1")) {
-                val target = if (searchEngineUrl.isNotBlank()) searchEngineUrl else "https://www.google.com"
+                val target = if (searchEngineUrl.isNotBlank()) searchEngineUrl else "https://duckduckgo.com"
                 currentUrl = target
                 omnibarText = target
             }
@@ -414,15 +432,19 @@ fun BrowserScreen(
 
     fun navigateTo(input: String) {
         val clean = input.trim()
+        if (clean.isBlank()) return
+        val defaultEngine = if (searchEngineUrl.isNotBlank()) searchEngineUrl else "https://duckduckgo.com/?q="
         val target = if (clean.startsWith("http://") || clean.startsWith("https://")) {
             clean
         } else if (clean.contains(".") && !clean.contains(" ")) {
             "https://$clean"
         } else {
-            searchEngineUrl + URLEncoder.encode(clean, "UTF-8")
+            val base = if (defaultEngine.endsWith("=") || defaultEngine.endsWith("/")) defaultEngine else "$defaultEngine?q="
+            base + URLEncoder.encode(clean, "UTF-8")
         }
 
         currentUrl = target
+        omnibarText = target
         engineController?.loadUrl(target)
         isOmnibarVisible = false
     }
@@ -702,24 +724,67 @@ fun BrowserScreen(
                         .padding(12.dp)
                         .border(1.dp, DarkBorder, RoundedCornerShape(16.dp))
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    Column(
+                        modifier = Modifier.padding(12.dp)
                     ) {
-                        Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        OutlinedTextField(
-                            value = omnibarText,
-                            onValueChange = { omnibarText = it },
-                            placeholder = { Text("Buscar con privacidad o escribir URL...") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-                            keyboardActions = KeyboardActions(onGo = { navigateTo(omnibarText) }),
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            OutlinedTextField(
+                                value = omnibarText,
+                                onValueChange = { omnibarText = it },
+                                placeholder = { Text("Buscar en la VPS o escribir URL...") },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                                keyboardActions = KeyboardActions(onGo = { navigateTo(omnibarText) }),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 8.dp)
+                            )
+                            IconButton(
+                                onClick = { navigateTo(omnibarText) }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                    contentDescription = "Ir",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            IconButton(onClick = { isOmnibarVisible = false }) {
+                                Icon(Icons.Default.Close, contentDescription = "Cerrar")
+                            }
+                        }
+
+                        // Accesos directos rápidos
+                        Row(
                             modifier = Modifier
-                                .weight(1f)
-                                .padding(horizontal = 8.dp)
-                        )
-                        IconButton(onClick = { isOmnibarVisible = false }) {
-                            Icon(Icons.Default.Close, contentDescription = "Cerrar")
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            SuggestionChip(
+                                onClick = { navigateTo("https://duckduckgo.com") },
+                                label = { Text("🦆 DuckDuckGo") }
+                            )
+                            SuggestionChip(
+                                onClick = { navigateTo("https://www.google.com") },
+                                label = { Text("🔍 Google") }
+                            )
+                            SuggestionChip(
+                                onClick = { navigateTo("https://api.ipify.org") },
+                                label = { Text("🛡️ Mi IP (Test)") }
+                            )
+                            SuggestionChip(
+                                onClick = { navigateTo("https://www.youtube.com") },
+                                label = { Text("▶️ YouTube") }
+                            )
+                            SuggestionChip(
+                                onClick = { navigateTo("https://github.com") },
+                                label = { Text("🐙 GitHub") }
+                            )
                         }
                     }
                 }
@@ -737,6 +802,8 @@ fun BrowserScreen(
                 onToggleEnginePicker = { showEngineDialog = true },
                 onToggleRoutePicker = { showRouteDialog = true },
                 onToggleBrowserMode = { toggleBrowserMode() },
+                onToggleOmnibar = { isOmnibarVisible = !isOmnibarVisible },
+                isOmnibarVisible = isOmnibarVisible,
                 onBack = {
                     if (engineController?.canGoBack() == true) engineController?.goBack()
                 },

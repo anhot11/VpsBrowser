@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Mouse
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material3.Icon
@@ -61,6 +62,8 @@ fun FloatingPillToolbar(
     onToggleEnginePicker: () -> Unit = {},
     onToggleRoutePicker: () -> Unit = {},
     onToggleBrowserMode: () -> Unit = {},
+    onToggleOmnibar: () -> Unit = {},
+    isOmnibarVisible: Boolean = false,
     onBack: () -> Unit,
     onForward: () -> Unit,
     onRefresh: () -> Unit,
@@ -140,6 +143,22 @@ fun FloatingPillToolbar(
                         imageVector = Icons.Default.Refresh,
                         contentDescription = "Recargar",
                         tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                // Buscador / Dirección URL
+                IconButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onToggleOmnibar()
+                    },
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "Buscador / Dirección URL",
+                        tint = if (isOmnibarVisible) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(18.dp)
                     )
                 }
