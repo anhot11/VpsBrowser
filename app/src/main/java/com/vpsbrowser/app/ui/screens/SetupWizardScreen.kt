@@ -124,7 +124,7 @@ fun SetupWizardScreen(
 
     // Deployment mode selection (Docker vs Native Bare-Metal)
     var showDeploymentModeDialog by remember { mutableStateOf(false) }
-    var selectedDeployMode by remember { mutableStateOf("docker") } // "docker" or "native"
+    var selectedDeployMode by remember { mutableStateOf("native") } // "native" (sin Docker) or "docker"
     var countdownSeconds by remember { mutableIntStateOf(5) }
 
     val terminalScrollState = rememberScrollState()
@@ -235,8 +235,8 @@ fun SetupWizardScreen(
                 countdownSeconds--
             }
             if (showDeploymentModeDialog) {
-                // When 5s expires without user interaction, proceed with default Docker
-                startDeployment("docker")
+                // When 5s expires without user interaction, proceed with default Native (No Docker)
+                startDeployment("native")
             }
         }
     }
@@ -696,7 +696,7 @@ fun SetupWizardScreen(
                                 }
 
                                 errorMessage = null
-                                selectedDeployMode = "docker"
+                                selectedDeployMode = "native"
                                 countdownSeconds = 5
                                 showDeploymentModeDialog = true
                             },
@@ -761,63 +761,12 @@ fun SetupWizardScreen(
                             }
 
                             Text(
-                                text = "Toca tu opción preferida o espera a que inicie con Docker:",
+                                text = "Toca tu opción preferida o espera a que inicie en Modo Nativo:",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
 
-                            // Option 1: Docker (Default)
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = if (selectedDeployMode == "docker") MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface,
-                                border = androidx.compose.foundation.BorderStroke(
-                                    if (selectedDeployMode == "docker") 2.dp else 1.dp,
-                                    if (selectedDeployMode == "docker") MaterialTheme.colorScheme.primary else DarkBorder
-                                ),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        selectedDeployMode = "docker"
-                                        startDeployment("docker")
-                                    }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(
-                                                text = "🐳 Docker (Contenedor)",
-                                                style = MaterialTheme.typography.titleSmall,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Surface(
-                                                shape = RoundedCornerShape(4.dp),
-                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-                                            ) {
-                                                Text(
-                                                    text = "PREDETERMINADO",
-                                                    fontSize = 9.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                                                )
-                                            }
-                                        }
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            text = "Aislamiento total y máxima compatibilidad. No altera paquetes del host.",
-                                            fontSize = 11.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            lineHeight = 14.sp
-                                        )
-                                    }
-                                }
-                            }
-
-                            // Option 2: Native VPS (Ultra-lightweight)
+                            // Option 1: Native VPS (Ultra-lightweight, Bare-metal, No Docker - Recommended)
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = if (selectedDeployMode == "native") MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface,
@@ -839,7 +788,7 @@ fun SetupWizardScreen(
                                     Column(modifier = Modifier.weight(1f)) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Text(
-                                                text = "⚡ Nativo VPS (Sin Docker)",
+                                                text = "⚡ Nativo Bare-Metal (Sin Docker)",
                                                 style = MaterialTheme.typography.titleSmall,
                                                 fontWeight = FontWeight.Bold
                                             )
@@ -849,7 +798,7 @@ fun SetupWizardScreen(
                                                 color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f)
                                             ) {
                                                 Text(
-                                                    text = "MÁXIMO RENDIMIENTO",
+                                                    text = "RECOMENDADO / RÁPIDO",
                                                     fontSize = 9.sp,
                                                     fontWeight = FontWeight.Bold,
                                                     color = MaterialTheme.colorScheme.tertiary,
@@ -859,7 +808,45 @@ fun SetupWizardScreen(
                                         }
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text(
-                                            text = "Ahorra 70% de RAM y 80% de disco. Sin sobrecarga de Docker. Ideal para VPS de 512MB/1GB.",
+                                            text = "Cero Docker. Ahorra 70% de RAM y 80% de disco. Máxima velocidad de navegación sin sobrecarga de contenedores.",
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            lineHeight = 14.sp
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Option 2: Docker Container
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (selectedDeployMode == "docker") MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    if (selectedDeployMode == "docker") 2.dp else 1.dp,
+                                    if (selectedDeployMode == "docker") MaterialTheme.colorScheme.primary else DarkBorder
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        selectedDeployMode = "docker"
+                                        startDeployment("docker")
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = "🐳 Docker (Contenedores)",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "Aislamiento en contenedores Docker para servidores con más de 2GB de RAM.",
                                             fontSize = 11.sp,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             lineHeight = 14.sp
@@ -873,7 +860,7 @@ fun SetupWizardScreen(
                         Button(
                             onClick = { startDeployment(selectedDeployMode) }
                         ) {
-                            Text("Continuar con Docker (${countdownSeconds}s)")
+                            Text("Continuar con Modo Nativo (${countdownSeconds}s)")
                         }
                     },
                     dismissButton = {

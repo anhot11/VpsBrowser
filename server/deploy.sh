@@ -14,8 +14,8 @@ echo -e "${BLUE}${BOLD}   🚀 INSTALADOR UNIVERSAL DE VPS BROWSER (FIREFOX)   $
 echo -e "${BLUE}${BOLD}      Optimizado para VPS Ligeras & Cloudflare        ${NC}"
 echo -e "${BLUE}${BOLD}======================================================${NC}"
 
-# Argument parsing: --docker (default), --native (bare-metal ultralight), --audit
-DEPLOY_MODE="docker"
+# Argument parsing: --native (default, bare-metal ultralight), --docker, --audit
+DEPLOY_MODE="native"
 for arg in "$@"; do
     case "$arg" in
         --native|-n)

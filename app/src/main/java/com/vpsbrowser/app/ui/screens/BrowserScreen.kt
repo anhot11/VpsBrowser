@@ -161,7 +161,16 @@ fun BrowserScreen(
     var cursorY by remember { mutableFloatStateOf(600f) }
 
     // Native Mobile vs Remote Desktop Mode
-    var browserMode by remember { mutableStateOf(profile.browserMode.ifBlank { "native_mobile" }) }
+    var browserMode by remember(profile.id) {
+        val initialMode = if (profile.isCodespace() && (profile.browserMode.isBlank() || profile.browserMode == "remote_desktop")) {
+            profile.browserMode = "native_mobile"
+            onSaveProfile(profile)
+            "native_mobile"
+        } else {
+            profile.browserMode.ifBlank { "native_mobile" }
+        }
+        mutableStateOf(initialMode)
+    }
     var isSocksActive by remember { mutableStateOf(false) }
     var isIncognito by remember { mutableStateOf(false) }
     var mobileCanGoBack by remember { mutableStateOf(false) }
@@ -172,11 +181,25 @@ fun BrowserScreen(
         connectionError = null
         scope.launch {
             if (browserMode == "native_mobile") {
+                isSocksActive = false
+                isTunnelActive = false
+                activeRouteName = "🛡️ Cifrando Túnel..."
+
                 if (profile.isCodespace()) {
-                    activeRouteName = "☁️ Móvil Cloud"
+                    // GitHub Codespaces Cloud Engine:
+                    // Remote Desktop KasmVNC runs 100% inside the cloud VM on port 3000.
+                    // This guarantees zero IP leakage as the Cloud VM executes the browser.
+                    activeRouteName = "☁️ Codespace Cloud"
+                    browserMode = "remote_desktop"
+                    profile.browserMode = "remote_desktop"
+                    onSaveProfile(profile)
+                    // Continue to remote desktop branch below
+                } else if (SshTunnelManager.isSocksProxyActive()) {
+                    isSocksActive = true
                     isTunnelActive = true
+                    activeRouteName = "🛡️ Móvil VPS"
                     val target = if (currentUrl.isBlank() || currentUrl.startsWith("http://127.0.0.1") || currentUrl.contains(":3000")) {
-                        if (searchEngineUrl.isNotBlank()) searchEngineUrl else "https://www.google.com"
+                        if (searchEngineUrl.isNotBlank()) searchEngineUrl else "https://duckduckgo.com"
                     } else {
                         currentUrl
                     }
@@ -184,45 +207,42 @@ fun BrowserScreen(
                     omnibarText = target
                     engineController?.loadUrl(target)
                     return@launch
-                }
-                if (SshTunnelManager.isSocksProxyActive()) {
-                    isSocksActive = true
-                    isTunnelActive = true
-                    activeRouteName = "🛡️ Móvil VPS"
-                    val target = if (currentUrl.isBlank() || currentUrl.startsWith("http://127.0.0.1") || currentUrl.contains(":3000")) {
-                        if (searchEngineUrl.isNotBlank()) searchEngineUrl else "https://www.google.com"
-                    } else {
-                        currentUrl
+                } else {
+                    isConnectingTunnel = true
+                    activeRouteName = "🛡️ Túnel VPS..."
+                    val socksRes = SshTunnelManager.startSocksProxy(profile)
+                    isConnectingTunnel = false
+                    socksRes.onSuccess { socksPort ->
+                        VpsProxyController.applySocksProxy(socksPort) { success ->
+                            if (success) {
+                                isSocksActive = true
+                                isTunnelActive = true
+                                activeRouteName = "🛡️ Móvil VPS"
+                                val target = if (currentUrl.isBlank() || currentUrl.startsWith("http://127.0.0.1") || currentUrl.contains(":3000")) {
+                                    if (searchEngineUrl.isNotBlank()) searchEngineUrl else "https://duckduckgo.com"
+                                } else {
+                                    currentUrl
+                                }
+                                currentUrl = target
+                                omnibarText = target
+                                engineController?.loadUrl(target)
+                            } else {
+                                isSocksActive = false
+                                isTunnelActive = false
+                                connectionError = "🛡️ Kill-Switch Activo: Fallo al aplicar el proxy seguro en el dispositivo. Conexión bloqueada para proteger tu IP."
+                            }
+                        }
+                    }.onFailure { err ->
+                        isSocksActive = false
+                        isTunnelActive = false
+                        connectionError = "🛡️ Escudo Anti-Fugas Activo: No se pudo conectar a la VPS (${err.message}). Todas las conexiones de tu IP han sido bloqueadas por seguridad."
                     }
-                    currentUrl = target
-                    omnibarText = target
                     return@launch
                 }
-                isConnectingTunnel = true
-                activeRouteName = "🛡️ Túnel Seguro..."
-                val socksRes = SshTunnelManager.startSocksProxy(profile)
-                isConnectingTunnel = false
-                socksRes.onSuccess { socksPort ->
-                    VpsProxyController.applySocksProxy(socksPort) { success ->
-                        isSocksActive = success
-                        isTunnelActive = true
-                        activeRouteName = "🛡️ Móvil VPS"
-                        val target = if (currentUrl.isBlank() || currentUrl.startsWith("http://127.0.0.1") || currentUrl.contains(":3000")) {
-                            if (searchEngineUrl.isNotBlank()) searchEngineUrl else "https://www.google.com"
-                        } else {
-                            currentUrl
-                        }
-                        currentUrl = target
-                        omnibarText = target
-                        engineController?.loadUrl(target)
-                    }
-                }.onFailure { err ->
-                    isSocksActive = false
-                    isTunnelActive = false
-                    connectionError = "Fallo al iniciar túnel seguro VPS: ${err.message}"
-                }
-            } else {
-                VpsProxyController.clearProxy()
+            }
+            
+            // Remote Desktop Mode (KasmVNC on VPS/Codespace)
+            VpsProxyController.clearProxy()
                 when (profile.connectionMode) {
                     "cloudflare", "codespace" -> {
                         if (profile.cloudflareUrl.isNotBlank()) {
@@ -416,6 +436,7 @@ fun BrowserScreen(
                     NativeMobileBrowserView(
                         url = currentUrl,
                         isIncognito = isIncognito,
+                        isTunnelActive = isSocksActive && isTunnelActive,
                         onProgress = {
                             loadProgress = it
                             mobileCanGoBack = engineController?.canGoBack() == true

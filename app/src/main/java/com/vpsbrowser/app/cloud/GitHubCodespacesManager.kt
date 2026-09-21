@@ -587,7 +587,7 @@ object GitHubCodespacesManager {
                 enableIpShield = false,
                 enableBbr = true,
                 appEngine = "turbo",
-                browserMode = "remote_desktop"
+                browserMode = "native_mobile"
             )
 
             Result.success(profile)

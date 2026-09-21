@@ -136,6 +136,37 @@ fun FirefoxTurboBrowserView(
         }
     }
 
+    fun injectDevTunnelsBypass(view: WebView?) {
+        val bypassJs = """
+            (function() {
+                function bypassDevTunnels() {
+                    try {
+                        var btn = document.getElementById('continue-button');
+                        if (btn) { btn.click(); return true; }
+                        var buttons = document.querySelectorAll('button, a, input[type="button"], input[type="submit"]');
+                        for (var i = 0; i < buttons.length; i++) {
+                            var el = buttons[i];
+                            var text = (el.innerText || el.textContent || el.value || '').trim().toLowerCase();
+                            if (text === 'continue' || text === 'continuar') {
+                                el.click();
+                                return true;
+                            }
+                        }
+                    } catch(e) {}
+                    return false;
+                }
+                if (!bypassDevTunnels()) {
+                    var count = 0;
+                    var timer = setInterval(function() {
+                        count++;
+                        if (bypassDevTunnels() || count > 20) { clearInterval(timer); }
+                    }, 250);
+                }
+            })();
+        """.trimIndent()
+        view?.evaluateJavascript(bypassJs, null)
+    }
+
     fun showRetryPage(view: WebView?, targetUrl: String) {
         val html = """
             <!DOCTYPE html>
@@ -229,6 +260,9 @@ fun FirefoxTurboBrowserView(
                 webChromeClient = object : WebChromeClient() {
                     override fun onProgressChanged(view: WebView?, newProgress: Int) {
                         onProgress(newProgress)
+                        if (newProgress in 30..90) {
+                            injectDevTunnelsBypass(view)
+                        }
                     }
 
                     override fun onPermissionRequest(request: PermissionRequest?) {
@@ -242,10 +276,12 @@ fun FirefoxTurboBrowserView(
                             currentUrl = it
                             onUrlChanged(it)
                         }
+                        injectDevTunnelsBypass(view)
                     }
 
                     override fun onPageFinished(view: WebView?, url: String?) {
                         controller.injectTurboOptimizations()
+                        injectDevTunnelsBypass(view)
                     }
 
                     override fun onReceivedError(
