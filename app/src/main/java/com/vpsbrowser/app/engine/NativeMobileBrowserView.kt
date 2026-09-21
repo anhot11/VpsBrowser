@@ -95,6 +95,7 @@ fun NativeMobileBrowserView(
     }
 
     val controller = remember(webViewRef, isTunnelActive) {
+        object : VpsEngineController {
             override fun loadUrl(url: String) {
                 currentUrl = url
                 if (isTunnelActive) {
