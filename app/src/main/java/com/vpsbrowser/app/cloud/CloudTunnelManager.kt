@@ -312,7 +312,7 @@ object CloudTunnelManager {
             while (!isClosed.get() && isRunning) {
                 val read = inStream.read(buf)
                 if (read < 0) break
-                val sent = webSocketRef?.send(ByteString.of(buf, 0, read)) ?: false
+                val sent = webSocketRef?.send(buf.toByteString(0, read)) ?: false
                 if (!sent) break
             }
         } catch (_: Exception) {
