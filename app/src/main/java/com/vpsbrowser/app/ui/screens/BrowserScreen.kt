@@ -172,6 +172,19 @@ fun BrowserScreen(
         connectionError = null
         scope.launch {
             if (browserMode == "native_mobile") {
+                if (profile.isCodespace()) {
+                    activeRouteName = "☁️ Móvil Cloud"
+                    isTunnelActive = true
+                    val target = if (currentUrl.isBlank() || currentUrl.startsWith("http://127.0.0.1") || currentUrl.contains(":3000")) {
+                        if (searchEngineUrl.isNotBlank()) searchEngineUrl else "https://www.google.com"
+                    } else {
+                        currentUrl
+                    }
+                    currentUrl = target
+                    omnibarText = target
+                    engineController?.loadUrl(target)
+                    return@launch
+                }
                 if (SshTunnelManager.isSocksProxyActive()) {
                     isSocksActive = true
                     isTunnelActive = true
@@ -211,16 +224,16 @@ fun BrowserScreen(
             } else {
                 VpsProxyController.clearProxy()
                 when (profile.connectionMode) {
-                    "cloudflare" -> {
+                    "cloudflare", "codespace" -> {
                         if (profile.cloudflareUrl.isNotBlank()) {
                             SshTunnelManager.stopTunnel()
                             isTunnelActive = true
-                            activeRouteName = "☁️ Cloudflare"
+                            activeRouteName = if (profile.isCodespace()) "☁️ Codespaces" else "☁️ Cloudflare"
                             val cfUrl = profile.cloudflareUrl.trimEnd('/')
                             currentUrl = cfUrl
                             engineController?.loadUrl(cfUrl)
                         } else {
-                            connectionError = "No hay URL de Cloudflare Tunnel configurada en este perfil."
+                            connectionError = "No hay URL de conexión configurada en este perfil."
                         }
                     }
                     "ssh_tunnel" -> {

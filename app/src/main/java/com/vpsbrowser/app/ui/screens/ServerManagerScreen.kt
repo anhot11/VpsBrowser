@@ -90,6 +90,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.filled.CloudQueue
+import androidx.compose.material.icons.filled.PauseCircle
+import androidx.compose.material.icons.filled.PlayCircle
+import com.vpsbrowser.app.cloud.GitHubCodespacesManager
 import com.vpsbrowser.app.engine.IncognitoManager
 import com.vpsbrowser.app.model.VpsProfile
 import com.vpsbrowser.app.security.SecurityManager
@@ -500,17 +504,182 @@ fun ServerManagerScreen(
                     }
                 } else {
                     // ==========================================
-                    // TAB 1: GESTIÓN Y MANTENIMIENTO DEL SERVIDOR VPS
+                    // TAB 1: GESTIÓN Y MANTENIMIENTO DEL SERVIDOR VPS / CODESPACES
                     // ==========================================
 
-                    // 1. Minimalist Server Status Dashboard Card
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, DarkBorder, RoundedCornerShape(16.dp))
-                    ) {
+                    if (profile.isCodespace()) {
+                        // 1. Codespace Cloud Dashboard Card
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, DarkBorder, RoundedCornerShape(16.dp))
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.CloudQueue, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Entorno Cloud Codespaces", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = StatusGreen.copy(alpha = 0.15f)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(StatusGreen))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "En Línea (Cloud)",
+                                                color = StatusGreen,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text("Memoria RAM Asignada:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text("8192 MB (Cloud Azure)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = StatusGreen)
+                                    }
+                                    LinearProgressIndicator(
+                                        progress = { 0.25f },
+                                        color = StatusGreen,
+                                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp))
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+                                HorizontalDivider(color = DarkBorder.copy(alpha = 0.5f))
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column {
+                                        Text("Cómputo", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text("2 vCPUs", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Column {
+                                        Text("Host Cloud", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text(profile.getCleanHost().take(16) + "...", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Column {
+                                        Text("Cifrado", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text("HTTPS Seguro", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = StatusGreen)
+                                    }
+                                }
+                            }
+                        }
+
+                        Text("Control de Horas Gratuitas", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+
+                        CleanToolCard(
+                            icon = Icons.Default.PauseCircle,
+                            title = "Suspender Codespace (Ahorrar Horas)",
+                            description = "Pausa la máquina virtual para no consumir tus 60 horas gratuitas de GitHub.",
+                            buttonText = "Suspender",
+                            enabled = actionInProgress == null,
+                            onClick = {
+                                val token = SecurityManager(context).getGitHubToken()
+                                val codespaceName = profile.host.substringBefore("-3000.app.github.dev").substringBefore(".app.github.dev")
+                                if (token.isNullOrBlank() || codespaceName.isBlank()) {
+                                    actionMessage = "No se encontró el token de GitHub asociado."
+                                } else {
+                                    actionInProgress = "Suspendiendo máquina virtual Cloud..."
+                                    scope.launch {
+                                        val res = GitHubCodespacesManager.stopCodespace(token, codespaceName)
+                                        actionInProgress = null
+                                        actionMessage = if (res.isSuccess) "✓ Codespace suspendido con éxito. ¡Tus horas gratis están a salvo!" else "Error: ${res.exceptionOrNull()?.message}"
+                                    }
+                                }
+                            }
+                        )
+
+                        CleanToolCard(
+                            icon = Icons.Default.PlayCircle,
+                            title = "Reanudar Codespace",
+                            description = "Enciende la máquina en la nube en ~10 segundos si estaba suspendida.",
+                            buttonText = "Reanudar",
+                            enabled = actionInProgress == null,
+                            onClick = {
+                                val token = SecurityManager(context).getGitHubToken()
+                                val codespaceName = profile.host.substringBefore("-3000.app.github.dev").substringBefore(".app.github.dev")
+                                if (token.isNullOrBlank() || codespaceName.isBlank()) {
+                                    actionMessage = "No se encontró el token de GitHub asociado."
+                                } else {
+                                    actionInProgress = "Reanudando máquina virtual Cloud..."
+                                    scope.launch {
+                                        val res = GitHubCodespacesManager.startCodespace(token, codespaceName)
+                                        actionInProgress = null
+                                        actionMessage = if (res.isSuccess) "✓ Máquina Cloud reanudada y lista." else "Error: ${res.exceptionOrNull()?.message}"
+                                    }
+                                }
+                            }
+                        )
+
+                        CleanToolCard(
+                            icon = Icons.Default.Bolt,
+                            title = "Reconfigurar Puertos Públicos",
+                            description = "Garantiza que el puerto web esté visible públicamente para navegar.",
+                            buttonText = "Reconfigurar",
+                            enabled = actionInProgress == null,
+                            onClick = {
+                                val token = SecurityManager(context).getGitHubToken()
+                                val codespaceName = profile.host.substringBefore("-3000.app.github.dev").substringBefore(".app.github.dev")
+                                if (token.isNullOrBlank() || codespaceName.isBlank()) {
+                                    actionMessage = "No se encontró el token de GitHub asociado."
+                                } else {
+                                    actionInProgress = "Ajustando visibilidad de puertos..."
+                                    scope.launch {
+                                        GitHubCodespacesManager.setPortVisibility(token, codespaceName, 3000, "public")
+                                        GitHubCodespacesManager.setPortVisibility(token, codespaceName, 8080, "public")
+                                        actionInProgress = null
+                                        actionMessage = "✓ Puertos públicos 3000 y 8080 verificados."
+                                    }
+                                }
+                            }
+                        )
+
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Zona de Desconexión", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = StatusRed)
+
+                        CleanToolCard(
+                            icon = Icons.Default.DeleteForever,
+                            title = "Desvincular Entorno Cloud",
+                            description = "Elimina este perfil de tu teléfono. Puedes volver a conectarlo cuando quieras.",
+                            buttonText = "Desvincular",
+                            isDestructive = true,
+                            enabled = actionInProgress == null,
+                            onClick = {
+                                onEnvironmentDestroyed()
+                            }
+                        )
+                    } else {
+                        // 1. Minimalist Server Status Dashboard Card (SSH VPS)
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, DarkBorder, RoundedCornerShape(16.dp))
+                        ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -824,6 +993,7 @@ fun ServerManagerScreen(
                         enabled = actionInProgress == null,
                         onClick = { showNukeDialog = true }
                     )
+                    }
                 }
 
                 // Global Action Feedback

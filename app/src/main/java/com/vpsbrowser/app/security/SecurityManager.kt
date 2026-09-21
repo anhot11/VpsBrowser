@@ -157,6 +157,18 @@ class SecurityManager(context: Context) {
     fun clearHistory() {
         securePrefs.edit().remove("secure_browser_history").apply()
     }
+
+    fun getGitHubToken(): String? {
+        return securePrefs.getString("secure_github_token", null)
+    }
+
+    fun saveGitHubToken(token: String?) {
+        if (token.isNullOrBlank()) {
+            securePrefs.edit().remove("secure_github_token").apply()
+        } else {
+            securePrefs.edit().putString("secure_github_token", token.trim()).apply()
+        }
+    }
 }
 
 data class BookmarkItem(

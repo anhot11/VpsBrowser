@@ -38,13 +38,25 @@ data class VpsProfile(
         return host.trim().removePrefix("http://").removePrefix("https://").split(":")[0]
     }
 
+    fun isCodespace(): Boolean {
+        return browserEngine == "codespace" || host.contains(".app.github.dev")
+    }
+
     fun getDirectUrl(): String {
         val cleanHost = getCleanHost()
+        if (isCodespace()) {
+            return "https://$cleanHost"
+        }
         val scheme = if (useSsl) "https" else "http"
         return "$scheme://$cleanHost:$browserPort"
     }
 
-    fun getFullUrl(): String = getDirectUrl()
+    fun getFullUrl(): String {
+        if (isCodespace() && cloudflareUrl.isNotBlank()) {
+            return cloudflareUrl
+        }
+        return getDirectUrl()
+    }
 
     fun isKeyAuth(): Boolean = sshPrivateKey.isNotBlank()
 }

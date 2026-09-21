@@ -49,6 +49,15 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.filled.CloudQueue
+import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.OpenInNew
+import com.vpsbrowser.app.cloud.GitHubCodespacesManager
+import com.vpsbrowser.app.security.SecurityManager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -97,6 +106,11 @@ fun SetupWizardScreen(
     var authMode by remember { mutableIntStateOf(0) } // 0: Password, 1: Private Key
 
     var isPasswordVisible by remember { mutableStateOf(false) }
+
+    val securityManager = remember { SecurityManager(context) }
+    var setupType by remember { mutableIntStateOf(0) } // 0: Cloud Gratis (Codespaces), 1: Servidor VPS (SSH)
+    var githubToken by remember { mutableStateOf(securityManager.getGitHubToken().orEmpty()) }
+    var isTokenVisible by remember { mutableStateOf(false) }
 
     // Installation states
     var isDeploying by remember { mutableStateOf(false) }
@@ -164,6 +178,49 @@ fun SetupWizardScreen(
         }
     }
 
+    val startCloudDeployment: () -> Unit = {
+        val token = githubToken.trim()
+        if (token.isBlank()) {
+            errorMessage = "Ingresa o pega tu token de GitHub con permiso 'codespace' para continuar."
+        } else {
+            errorMessage = null
+            isDeploying = true
+            terminalLogs = ">>> Iniciando conexión autónoma con GitHub Codespaces Cloud...\n"
+            securityManager.saveGitHubToken(token)
+
+            scope.launch {
+                val result = GitHubCodespacesManager.orchestrateCloudBrowser(
+                    token = token,
+                    onProgress = { title, pct ->
+                        scope.launch(Dispatchers.Main) {
+                            deployStepTitle = title
+                            deployProgress = pct
+                        }
+                    },
+                    onLog = { line ->
+                        scope.launch(Dispatchers.Main) {
+                            terminalLogs += line + "\n"
+                        }
+                    }
+                )
+
+                withContext(Dispatchers.Main) {
+                    result.onSuccess { profile ->
+                        deployStepTitle = "¡Navegador Cloud listo! Abriendo navegador..."
+                        deployProgress = 100
+                        Toast.makeText(context, "¡Conexión exitosa con GitHub Codespaces!", Toast.LENGTH_SHORT).show()
+                        completedProfile = profile
+                        isDeploying = false
+                        onDeploymentSuccess(profile)
+                    }.onFailure { err ->
+                        isDeploying = false
+                        errorMessage = "Error Cloud: ${err.message}"
+                    }
+                }
+            }
+        }
+    }
+
     // 5-second countdown timer for auto-selecting default mode (Docker)
     LaunchedEffect(showDeploymentModeDialog) {
         if (showDeploymentModeDialog) {
@@ -206,48 +263,235 @@ fun SetupWizardScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Header Info Card
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surface,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.dp, DarkBorder, RoundedCornerShape(16.dp))
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.AutoFixHigh,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(36.dp)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text(
-                            text = "Instalación en 1 Toque (Sin Comandos)",
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        Text(
-                            text = "La app configurará automáticamente Docker, memoria SWAP, Firewall y Firefox con uBlock Origin preinstalado en tu VPS.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-
             if (!isDeploying && completedProfile == null) {
-                // Form
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surface,
+                // Selector de modo: Cloud Gratis vs Servidor Propio
+                TabRow(
+                    selectedTabIndex = setupType,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, DarkBorder, RoundedCornerShape(16.dp))
+                        .clip(RoundedCornerShape(12.dp))
                 ) {
+                    Tab(
+                        selected = setupType == 0,
+                        onClick = {
+                            setupType = 0
+                            errorMessage = null
+                        },
+                        text = { Text("🚀 Cloud Gratis", fontSize = 12.sp, fontWeight = FontWeight.Bold) },
+                        icon = { Icon(Icons.Default.CloudQueue, contentDescription = null) }
+                    )
+                    Tab(
+                        selected = setupType == 1,
+                        onClick = {
+                            setupType = 1
+                            errorMessage = null
+                        },
+                        text = { Text("🖥️ VPS Propia (SSH)", fontSize = 12.sp, fontWeight = FontWeight.Bold) },
+                        icon = { Icon(Icons.Default.Dns, contentDescription = null) }
+                    )
+                }
+
+                if (setupType == 0) {
+                    // Modo Cloud Codespaces
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, DarkBorder, RoundedCornerShape(16.dp))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.CloudQueue,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = "Navegador Cloud en GitHub (Gratis)",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "Cero configuración. La app levanta o reanuda tu navegador en la nube de GitHub sin tocar una sola terminal.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            // Highlights
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Column(modifier = Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("⚡ 8 GB RAM", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        Text("2 Cores Azure", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Column(modifier = Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("⏱️ 60 Horas", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        Text("Gratis al mes", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Column(modifier = Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("🛡️ 0 Rastro", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        Text("Móvil invisible", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
+
+                            OutlinedTextField(
+                                value = githubToken,
+                                onValueChange = { githubToken = it },
+                                label = { Text("Token de GitHub (Personal Access Token)") },
+                                placeholder = { Text("ghp_...") },
+                                visualTransformation = if (isTokenVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                trailingIcon = {
+                                    Row {
+                                        IconButton(onClick = {
+                                            val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                            val clip = cm?.primaryClip?.getItemAt(0)?.text?.toString()
+                                            if (!clip.isNullOrBlank()) {
+                                                githubToken = clip.trim()
+                                                Toast.makeText(context, "Token pegado", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }) {
+                                            Icon(Icons.Default.ContentPaste, contentDescription = "Pegar")
+                                        }
+                                        IconButton(onClick = { isTokenVisible = !isTokenVisible }) {
+                                            Icon(
+                                                if (isTokenVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                                contentDescription = null
+                                            )
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        val tokenUrl = "https://github.com/settings/tokens/new?scopes=codespace,repo&description=VPSBrowser-Cloud"
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(tokenUrl))
+                                        context.startActivity(intent)
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.OpenInNew,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "🔑 ¿No tienes token? Toca aquí para crearlo en 1 toque en GitHub (con permiso 'codespace').",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+
+                            errorMessage?.let { msg ->
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .border(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                ) {
+                                    Text(
+                                        text = msg,
+                                        color = MaterialTheme.colorScheme.error,
+                                        fontSize = 12.sp,
+                                        modifier = Modifier.padding(10.dp)
+                                    )
+                                }
+                            }
+
+                            Button(
+                                onClick = startCloudDeployment,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(50.dp)
+                            ) {
+                                Text("🚀 Iniciar Navegador Cloud Autónomo", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                } else {
+                    // Header Info Card (VPS SSH)
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, DarkBorder, RoundedCornerShape(16.dp))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AutoFixHigh,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(36.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "Instalación en 1 Toque (Sin Comandos)",
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                Text(
+                                    text = "La app configurará automáticamente Docker, memoria SWAP, Firewall y Firefox con uBlock Origin preinstalado en tu VPS.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    // Form
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, DarkBorder, RoundedCornerShape(16.dp))
+                    ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -427,6 +671,7 @@ fun SetupWizardScreen(
                         }
                     }
                 }
+            }
             }
 
             // Modal Dialog: 5-Second Mode Selection (Docker default vs Native VPS)
