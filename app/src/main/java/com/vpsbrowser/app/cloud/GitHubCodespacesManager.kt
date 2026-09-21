@@ -251,7 +251,8 @@ object GitHubCodespacesManager {
     }
 
     /**
-     * Configura la visibilidad del puerto en el Codespace a 'public' para permitir acceso web sin cookies de sesión.
+     * Configura la visibilidad del puerto en el Codespace a 'public' (o 'private')
+     * utilizando la API oficial de Microsoft Dev Tunnels que respalda a GitHub Codespaces.
      */
     suspend fun setPortVisibility(
         token: String,
@@ -260,24 +261,93 @@ object GitHubCodespacesManager {
         visibility: String = "public"
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val jsonPayload = JSONObject().apply {
-                put("visibility", visibility)
-            }
-            val bodyReq = jsonPayload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-            val req = Request.Builder()
-                .url("$GITHUB_API_BASE/user/codespaces/$codespaceName/ports/$port")
+            // 1. Obtener los metadatos de conexión del Codespace y el token de administración del túnel
+            val csReq = Request.Builder()
+                .url("$GITHUB_API_BASE/user/codespaces/$codespaceName?internal=true&refresh=true")
                 .headers(buildHeaders(token))
-                .patch(bodyReq)
+                .get()
                 .build()
 
-            httpClient.newCall(req).execute().use { resp ->
-                // 200 OK o 204 No Content son éxitos
+            val tunnelInfo = httpClient.newCall(csReq).execute().use { resp ->
+                val body = resp.body?.string().orEmpty()
+                if (!resp.isSuccessful) {
+                    return@withContext Result.failure(Exception("Error consultando túnel ($codespaceName): HTTP ${resp.code}"))
+                }
+                val json = JSONObject(body)
+                val conn = json.optJSONObject("connection") ?: return@withContext Result.failure(Exception("Sin datos de conexión en Codespace"))
+                val props = conn.optJSONObject("tunnelProperties") ?: return@withContext Result.failure(Exception("Sin tunnelProperties"))
+                Triple(
+                    props.optString("tunnelId", ""),
+                    props.optString("clusterId", ""),
+                    props.optString("managePortsAccessToken", "")
+                )
+            }
+
+            val (tunnelId, clusterId, manageToken) = tunnelInfo
+            if (tunnelId.isBlank() || clusterId.isBlank() || manageToken.isBlank()) {
+                return@withContext Result.failure(Exception("Credenciales incompletas de Dev Tunnels"))
+            }
+
+            val portUrl = "https://$clusterId.rel.tunnels.api.visualstudio.com/tunnels/$tunnelId/ports/$port?api-version=2023-09-27-preview"
+
+            // 2. Obtener la configuración actual del puerto en Dev Tunnels
+            val getPortReq = Request.Builder()
+                .url(portUrl)
+                .addHeader("Authorization", "Tunnel $manageToken")
+                .addHeader("Content-Type", "application/json")
+                .get()
+                .build()
+
+            val portJson = httpClient.newCall(getPortReq).execute().use { resp ->
+                val body = resp.body?.string().orEmpty()
+                if (resp.isSuccessful && body.isNotBlank()) {
+                    JSONObject(body)
+                } else {
+                    // Si el puerto no existe en el túnel aún, crearlo con valores por defecto
+                    JSONObject().apply {
+                        put("clusterId", clusterId)
+                        put("tunnelId", tunnelId)
+                        put("portNumber", port)
+                        put("protocol", "http")
+                    }
+                }
+            }
+
+            // 3. Modificar accessControl para permitir Anonymous (Público)
+            val entries = JSONArray()
+            entries.put(JSONObject().apply {
+                put("type", "Organizations")
+                put("provider", "github")
+                put("isInherited", true)
+                put("isDeny", true)
+                put("subjects", JSONArray().put("1"))
+                put("scopes", JSONArray().put("connect"))
+            })
+            if (visibility.equals("public", ignoreCase = true)) {
+                entries.put(JSONObject().apply {
+                    put("type", "Anonymous")
+                    put("subjects", JSONArray())
+                    put("scopes", JSONArray().put("connect"))
+                })
+            }
+
+            portJson.put("accessControl", JSONObject().apply {
+                put("entries", entries)
+            })
+
+            val putReq = Request.Builder()
+                .url(portUrl)
+                .addHeader("Authorization", "Tunnel $manageToken")
+                .addHeader("Content-Type", "application/json")
+                .put(portJson.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+                .build()
+
+            httpClient.newCall(putReq).execute().use { resp ->
                 if (resp.isSuccessful) {
                     Result.success(Unit)
                 } else {
-                    val body = resp.body?.string().orEmpty()
-                    // Si el puerto aún no fue detectado por devcontainer, no es un error fatal ya que .devcontainer.json ya define visibility: public
-                    Result.failure(Exception("Aviso puerto $port (${resp.code}): $body"))
+                    val errBody = resp.body?.string().orEmpty()
+                    Result.failure(Exception("Dev Tunnels error (${resp.code}): $errBody"))
                 }
             }
         } catch (e: Exception) {
@@ -436,7 +506,17 @@ object GitHubCodespacesManager {
             val codespaceHost = "$codespaceName-3000.app.github.dev"
             val directWebUrl = "https://$codespaceHost/"
 
-            onProgress("Esperando arranque de Firefox remoto en la nube...", 82)
+            onProgress("Configurando puerto seguro HTTPS en Microsoft Dev Tunnels...", 82)
+            onLog(">>> Configurando puerto 3000 como PÚBLICO en Microsoft Dev Tunnels...")
+            val portRes = setPortVisibility(token, codespaceName, 3000, "public")
+            if (portRes.isSuccess) {
+                onLog(">>> ✓ Puerto 3000 configurado como PÚBLICO con éxito.")
+            } else {
+                onLog(">>> Aviso configurando visibilidad puerto 3000: ${portRes.exceptionOrNull()?.message}")
+            }
+            setPortVisibility(token, codespaceName, 8080, "public")
+
+            onProgress("Esperando arranque de Firefox remoto en la nube...", 85)
             onLog(">>> Verificando disponibilidad de la interfaz web en $directWebUrl...")
 
             var isWebReady = false
@@ -445,26 +525,29 @@ object GitHubCodespacesManager {
                 .callTimeout(java.time.Duration.ofSeconds(6))
                 .build()
 
-            val cleanToken = token.trim()
-            val maxProbes = 40 // 40 sondeos * 3s = 120 segundos
+            val maxProbes = 30 // 30 sondeos * 3s = 90 segundos
             for (probe in 1..maxProbes) {
                 try {
                     val probeReq = Request.Builder()
                         .url(directWebUrl)
-                        .addHeader("X-Github-Token", cleanToken)
                         .get()
                         .build()
                     val probeResp = probeClient.newCall(probeReq).execute()
                     val code = probeResp.code
                     probeResp.close()
 
-                    val pct = 82 + (probe * 17 / maxProbes)
+                    val pct = 85 + (probe * 14 / maxProbes)
                     onProgress("Iniciando contenedor web Firefox ($probe/$maxProbes)...", pct)
 
                     if (code in 200..399) {
                         isWebReady = true
-                        onLog(">>> ✓ Interfaz web lista y respondiendo exitosamente (HTTP $code).")
+                        onLog(">>> ✓ Interfaz web Firefox lista y respondiendo exitosamente (HTTP $code).")
                         break
+                    } else if (code == 401 || code == 404) {
+                        if (probe % 3 == 0) {
+                            setPortVisibility(token, codespaceName, 3000, "public")
+                        }
+                        onLog(">>> Esperando servidor Firefox en Cloud (Intento $probe/$maxProbes): HTTP $code")
                     } else {
                         onLog(">>> Esperando servidor Firefox en Cloud (Intento $probe/$maxProbes): HTTP $code")
                     }

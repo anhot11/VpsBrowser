@@ -229,7 +229,7 @@ fun BrowserScreen(
                             SshTunnelManager.stopTunnel()
                             isTunnelActive = true
                             activeRouteName = if (profile.isCodespace()) "☁️ Codespaces" else "☁️ Cloudflare"
-                            val cfUrl = profile.cloudflareUrl.trimEnd('/')
+                            val cfUrl = if (profile.isCodespace()) profile.cloudflareUrl.trimEnd('/') + "/" else profile.cloudflareUrl.trimEnd('/')
                             currentUrl = cfUrl
                             engineController?.loadUrl(cfUrl)
                         } else {

@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-set -e
 
 echo "=== [VPS Browser Cloud] Iniciando entorno seguro en GitHub Codespaces ==="
 
-# Esperar a que el daemon de Docker esté disponible
+# Determinar comando docker disponible (docker directo o sudo docker)
+DOCKER_BIN="docker"
 for i in {1..30}; do
     if docker info >/dev/null 2>&1; then
+        DOCKER_BIN="docker"
+        break
+    elif sudo docker info >/dev/null 2>&1; then
+        DOCKER_BIN="sudo docker"
         break
     fi
     echo "Esperando que Docker esté disponible ($i/30)..."
@@ -13,13 +17,13 @@ for i in {1..30}; do
 done
 
 # Iniciar o arrancar contenedor Firefox Desktop en puerto 3000
-if [ ! "$(docker ps -q -f name=vps-firefox)" ]; then
-    if [ "$(docker ps -aq -f status=exited -f name=vps-firefox)" ]; then
+if [ ! "$($DOCKER_BIN ps -q -f name=vps-firefox 2>/dev/null)" ]; then
+    if [ "$($DOCKER_BIN ps -aq -f status=exited -f name=vps-firefox 2>/dev/null)" ]; then
         echo "Reanudando contenedor vps-firefox..."
-        docker start vps-firefox
+        $DOCKER_BIN start vps-firefox || true
     else
         echo "Descargando e iniciando vps-firefox..."
-        docker run -d \
+        $DOCKER_BIN run -d \
           --name vps-firefox \
           --shm-size="2gb" \
           -p 3000:3000 \
@@ -27,18 +31,18 @@ if [ ! "$(docker ps -q -f name=vps-firefox)" ]; then
           -e PGID=1000 \
           -e TZ=Etc/UTC \
           --restart unless-stopped \
-          lscr.io/linuxserver/firefox:latest
+          lscr.io/linuxserver/firefox:latest || true
     fi
 else
     echo "vps-firefox ya está en ejecución."
 fi
 
 # Iniciar proxy HTTP/SOCKS ligero en puerto 8080 para navegación móvil
-if [ ! "$(docker ps -q -f name=vps-proxy)" ]; then
-    if [ "$(docker ps -aq -f status=exited -f name=vps-proxy)" ]; then
-        docker start vps-proxy || true
+if [ ! "$($DOCKER_BIN ps -q -f name=vps-proxy 2>/dev/null)" ]; then
+    if [ "$($DOCKER_BIN ps -aq -f status=exited -f name=vps-proxy 2>/dev/null)" ]; then
+        $DOCKER_BIN start vps-proxy || true
     else
-        docker run -d \
+        $DOCKER_BIN run -d \
           --name vps-proxy \
           -p 8080:8888 \
           --restart unless-stopped \
