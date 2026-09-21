@@ -11,8 +11,8 @@ android {
         applicationId = "com.vpsbrowser.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 30
-        versionName = "2.7.9"
+        versionCode = 31
+        versionName = "2.8.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

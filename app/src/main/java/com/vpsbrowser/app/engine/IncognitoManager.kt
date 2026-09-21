@@ -31,10 +31,10 @@ object IncognitoManager {
         isIncognitoActive = enabled
         val settings = webView.settings
         if (enabled) {
-            // Memoria RAM pura forzada: Cero escritura en almacenamiento flash/disco
+            // Memoria RAM pura forzada: Cero persistencia en almacenamiento flash/disco
             settings.cacheMode = WebSettings.LOAD_NO_CACHE
-            settings.domStorageEnabled = false
-            settings.databaseEnabled = false
+            settings.domStorageEnabled = true // Required by Cloudflare Turnstile; purged upon exit
+            settings.databaseEnabled = true
             @Suppress("DEPRECATION")
             settings.saveFormData = false
             settings.setGeolocationEnabled(false)

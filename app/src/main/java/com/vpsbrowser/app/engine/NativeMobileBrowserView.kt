@@ -8,7 +8,10 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.ConsoleMessage
+import android.webkit.CookieManager
 import android.webkit.GeolocationPermissions
+import android.webkit.JsResult
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -73,6 +76,10 @@ fun NativeMobileBrowserView(
     }
 
     fun injectDevTunnelsBypass(view: WebView?) {
+        val checkUrl = view?.url ?: ""
+        if (!checkUrl.contains("app.github.dev") && !checkUrl.contains("devtunnels.ms")) {
+            return
+        }
         val bypassJs = """
             (function() {
                 function bypassDevTunnels() {
@@ -168,15 +175,18 @@ fun NativeMobileBrowserView(
             }
 
             override fun setDesktopMode(enabled: Boolean) {
-                val settings = webViewRef?.settings ?: return
+                val wv = webViewRef ?: return
+                val settings = wv.settings
+                val defaultUa = WebSettings.getDefaultUserAgent(wv.context)
+                val cleanMobileUa = defaultUa.replace("; wv", "").replace(Regex("Version/\\d+\\.\\d+\\s*"), "")
                 settings.userAgentString = if (enabled) {
                     "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"
                 } else {
-                    "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
+                    cleanMobileUa
                 }
                 settings.useWideViewPort = true
                 settings.loadWithOverviewMode = enabled
-                webViewRef?.reload()
+                wv.reload()
             }
 
             override fun injectTurboOptimizations() {
@@ -236,6 +246,14 @@ fun NativeMobileBrowserView(
                         false
                     }
 
+                    // Enable third-party cookies for Turnstile cross-origin iframe challenges
+                    val cookieManager = CookieManager.getInstance()
+                    cookieManager.setAcceptCookie(true)
+                    cookieManager.setAcceptThirdPartyCookies(this, true)
+
+                    val defaultUa = WebSettings.getDefaultUserAgent(ctx)
+                    val cleanMobileUa = defaultUa.replace("; wv", "").replace(Regex("Version/\\d+\\.\\d+\\s*"), "")
+
                     settings.apply {
                         javaScriptEnabled = true
                         domStorageEnabled = true
@@ -251,7 +269,14 @@ fun NativeMobileBrowserView(
                         builtInZoomControls = true
                         displayZoomControls = false
 
-                        userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
+                        // Cloudflare Turnstile & Web Security Compatibility
+                        javaScriptCanOpenWindowsAutomatically = true
+                        setSupportMultipleWindows(false)
+                        loadsImagesAutomatically = true
+                        blockNetworkImage = false
+                        blockNetworkLoads = false
+
+                        userAgentString = cleanMobileUa
                         cacheMode = WebSettings.LOAD_DEFAULT
                     }
 
@@ -315,6 +340,22 @@ fun NativeMobileBrowserView(
                         ) {
                             callback?.invoke(origin, true, false)
                         }
+
+                        override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+                            android.util.Log.d("VPS_WEBVIEW", "[${consoleMessage?.messageLevel()}] ${consoleMessage?.message()} (${consoleMessage?.sourceId()}:${consoleMessage?.lineNumber()})")
+                            return true
+                        }
+
+                        override fun onJsAlert(view: WebView?, url: String?, message: String?, result: JsResult?): Boolean {
+                            android.util.Log.i("VPS_WEBVIEW", "JS Alert: $message")
+                            result?.confirm()
+                            return true
+                        }
+
+                        override fun onJsConfirm(view: WebView?, url: String?, message: String?, result: JsResult?): Boolean {
+                            result?.confirm()
+                            return true
+                        }
                     }
 
                     webViewClient = object : WebViewClient() {
@@ -330,6 +371,9 @@ fun NativeMobileBrowserView(
 
                         override fun onPageFinished(view: WebView?, pageUrl: String?) {
                             super.onPageFinished(view, pageUrl)
+                            try {
+                                CookieManager.getInstance().flush()
+                            } catch (_: Exception) {}
                             pageUrl?.let {
                                 currentUrl = it
                                 onUrlChanged(it)

@@ -4,6 +4,7 @@ import android.util.Log
 import com.vpsbrowser.app.model.VpsProfile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -45,8 +46,13 @@ object CloudTunnelManager {
     private var activeHost: String = ""
 
     private val threadPool = Executors.newCachedThreadPool()
+    private val dispatcher = Dispatcher().apply {
+        maxRequests = 512
+        maxRequestsPerHost = 512
+    }
     private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(12, TimeUnit.SECONDS)
+        .dispatcher(dispatcher)
+        .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.SECONDS) // Keep-alive for streaming
         .writeTimeout(0, TimeUnit.SECONDS)
         .pingInterval(15, TimeUnit.SECONDS)
