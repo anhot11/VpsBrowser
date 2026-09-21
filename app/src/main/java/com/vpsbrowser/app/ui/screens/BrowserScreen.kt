@@ -200,28 +200,32 @@ fun BrowserScreen(
                     isConnectingTunnel = false
                     cloudRes.onSuccess { localPort ->
                         VpsProxyController.applySocksProxy(localPort) { success ->
-                            if (success) {
-                                isSocksActive = true
-                                isTunnelActive = true
-                                activeRouteName = "☁️ Codespace Cloud"
-                                val target = if (currentUrl.isBlank() || currentUrl.startsWith("http://127.0.0.1") || currentUrl.contains(":3000")) {
-                                    if (searchEngineUrl.isNotBlank()) searchEngineUrl else "https://duckduckgo.com"
+                            scope.launch(Dispatchers.Main) {
+                                if (success) {
+                                    isSocksActive = true
+                                    isTunnelActive = true
+                                    activeRouteName = "☁️ Codespace Cloud"
+                                    val target = if (currentUrl.isBlank() || currentUrl.startsWith("http://127.0.0.1") || currentUrl.contains(":3000")) {
+                                        if (searchEngineUrl.isNotBlank()) searchEngineUrl else "https://duckduckgo.com"
+                                    } else {
+                                        currentUrl
+                                    }
+                                    currentUrl = target
+                                    omnibarText = target
+                                    engineController?.loadUrl(target)
                                 } else {
-                                    currentUrl
+                                    isSocksActive = false
+                                    isTunnelActive = false
+                                    connectionError = "🛡️ Kill-Switch Activo: Fallo al aplicar el proxy seguro en el dispositivo. Conexión bloqueada para proteger tu IP."
                                 }
-                                currentUrl = target
-                                omnibarText = target
-                                engineController?.loadUrl(target)
-                            } else {
-                                isSocksActive = false
-                                isTunnelActive = false
-                                connectionError = "🛡️ Kill-Switch Activo: Fallo al aplicar el proxy seguro en el dispositivo. Conexión bloqueada para proteger tu IP."
                             }
                         }
                     }.onFailure { err ->
-                        isSocksActive = false
-                        isTunnelActive = false
-                        connectionError = "🛡️ Escudo Anti-Fugas Activo: No se pudo conectar al servidor Cloud (${err.message}). Tráfico bloqueado por seguridad."
+                        scope.launch(Dispatchers.Main) {
+                            isSocksActive = false
+                            isTunnelActive = false
+                            connectionError = "🛡️ Escudo Anti-Fugas Activo: No se pudo conectar al servidor Cloud (${err.message}). Tráfico bloqueado por seguridad."
+                        }
                     }
                     return@launch
                 } else if (SshTunnelManager.isSocksProxyActive()) {
@@ -244,28 +248,32 @@ fun BrowserScreen(
                     isConnectingTunnel = false
                     socksRes.onSuccess { socksPort ->
                         VpsProxyController.applySocksProxy(socksPort) { success ->
-                            if (success) {
-                                isSocksActive = true
-                                isTunnelActive = true
-                                activeRouteName = "🛡️ Móvil VPS"
-                                val target = if (currentUrl.isBlank() || currentUrl.startsWith("http://127.0.0.1") || currentUrl.contains(":3000")) {
-                                    if (searchEngineUrl.isNotBlank()) searchEngineUrl else "https://duckduckgo.com"
+                            scope.launch(Dispatchers.Main) {
+                                if (success) {
+                                    isSocksActive = true
+                                    isTunnelActive = true
+                                    activeRouteName = "🛡️ Móvil VPS"
+                                    val target = if (currentUrl.isBlank() || currentUrl.startsWith("http://127.0.0.1") || currentUrl.contains(":3000")) {
+                                        if (searchEngineUrl.isNotBlank()) searchEngineUrl else "https://duckduckgo.com"
+                                    } else {
+                                        currentUrl
+                                    }
+                                    currentUrl = target
+                                    omnibarText = target
+                                    engineController?.loadUrl(target)
                                 } else {
-                                    currentUrl
+                                    isSocksActive = false
+                                    isTunnelActive = false
+                                    connectionError = "🛡️ Kill-Switch Activo: Fallo al aplicar el proxy seguro en el dispositivo. Conexión bloqueada para proteger tu IP."
                                 }
-                                currentUrl = target
-                                omnibarText = target
-                                engineController?.loadUrl(target)
-                            } else {
-                                isSocksActive = false
-                                isTunnelActive = false
-                                connectionError = "🛡️ Kill-Switch Activo: Fallo al aplicar el proxy seguro en el dispositivo. Conexión bloqueada para proteger tu IP."
                             }
                         }
                     }.onFailure { err ->
-                        isSocksActive = false
-                        isTunnelActive = false
-                        connectionError = "🛡️ Escudo Anti-Fugas Activo: No se pudo conectar a la VPS (${err.message}). Todas las conexiones de tu IP han sido bloqueadas por seguridad."
+                        scope.launch(Dispatchers.Main) {
+                            isSocksActive = false
+                            isTunnelActive = false
+                            connectionError = "🛡️ Escudo Anti-Fugas Activo: No se pudo conectar a la VPS (${err.message}). Todas las conexiones de tu IP han sido bloqueadas por seguridad."
+                        }
                     }
                     return@launch
                 }

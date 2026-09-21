@@ -36,6 +36,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,6 +63,7 @@ fun NativeMobileBrowserView(
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var currentUrl by remember { mutableStateOf(url) }
     var hasLoadedTunnelUrl by remember { mutableStateOf(false) }
+    val tunnelActiveState by rememberUpdatedState(isTunnelActive)
 
     fun injectDevTunnelsBypass(view: WebView?) {
         val bypassJs = """
@@ -94,18 +96,24 @@ fun NativeMobileBrowserView(
         view?.evaluateJavascript(bypassJs, null)
     }
 
-    val controller = remember(webViewRef, isTunnelActive) {
+    val controller = remember(webViewRef) {
         object : VpsEngineController {
             override fun loadUrl(url: String) {
                 currentUrl = url
-                if (isTunnelActive) {
+                val active = tunnelActiveState || 
+                    com.vpsbrowser.app.cloud.CloudTunnelManager.isTunnelActive() || 
+                    com.vpsbrowser.app.engine.VpsProxyController.isProxyActive()
+                if (active) {
                     hasLoadedTunnelUrl = true
                     webViewRef?.loadUrl(url)
                 }
             }
 
             override fun reload() {
-                if (isTunnelActive) {
+                val active = tunnelActiveState || 
+                    com.vpsbrowser.app.cloud.CloudTunnelManager.isTunnelActive() || 
+                    com.vpsbrowser.app.engine.VpsProxyController.isProxyActive()
+                if (active) {
                     hasLoadedTunnelUrl = true
                     val wv = webViewRef
                     if (wv != null) {
@@ -178,18 +186,28 @@ fun NativeMobileBrowserView(
         }
     }
 
+    val tunnelActiveState by rememberUpdatedState(isTunnelActive)
+
+    fun isShieldActive(): Boolean {
+        return tunnelActiveState || 
+            com.vpsbrowser.app.cloud.CloudTunnelManager.isTunnelActive() || 
+            com.vpsbrowser.app.engine.VpsProxyController.isProxyActive() ||
+            com.vpsbrowser.app.ssh.SshTunnelManager.isSocksProxyActive()
+    }
+
     LaunchedEffect(controller) {
         onEngineReady(controller)
     }
 
     LaunchedEffect(url, isTunnelActive) {
-        if (url.isNotBlank() && isTunnelActive) {
+        val active = isShieldActive()
+        if (url.isNotBlank() && active) {
             if (!hasLoadedTunnelUrl || url != currentUrl) {
                 currentUrl = url
                 hasLoadedTunnelUrl = true
                 webViewRef?.loadUrl(url)
             }
-        } else if (!isTunnelActive) {
+        } else if (!active) {
             hasLoadedTunnelUrl = false
             webViewRef?.stopLoading()
         }
@@ -340,7 +358,7 @@ fun NativeMobileBrowserView(
 
                             // ABSOLUTE HARDWARE KILL-SWITCH: Zero Direct IP Leakage
                             // Drop 100% of outgoing requests if the VPS tunnel is not confirmed active
-                            if (!isTunnelActive) {
+                            if (!isShieldActive()) {
                                 android.util.Log.e("VPS_KILL_SWITCH", "🛡️ BLOQUEADO POR KILL-SWITCH: Intento de fuga hacia ${request.url}")
                                 return WebResourceResponse(
                                     "text/plain",
@@ -359,7 +377,7 @@ fun NativeMobileBrowserView(
                             val reqUri = request?.url ?: return false
                             val scheme = reqUri.scheme?.lowercase() ?: ""
 
-                            if (!isTunnelActive && (scheme == "http" || scheme == "https")) {
+                            if (!isShieldActive() && (scheme == "http" || scheme == "https")) {
                                 android.util.Log.w("VPS_KILL_SWITCH", "Navegación bloqueada por Kill-Switch: $reqUri")
                                 return true
                             }
@@ -397,7 +415,7 @@ fun NativeMobileBrowserView(
                         }
                     }
 
-                    if (url.isNotBlank() && isTunnelActive) {
+                    if (url.isNotBlank() && isShieldActive()) {
                         loadUrl(url)
                     }
 
@@ -411,7 +429,7 @@ fun NativeMobileBrowserView(
         )
 
         // Kill Switch Shield Overlay: Visible whenever tunnel is not confirmed active
-        if (!isTunnelActive) {
+        if (!isShieldActive()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
