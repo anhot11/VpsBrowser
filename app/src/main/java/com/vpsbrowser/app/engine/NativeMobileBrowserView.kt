@@ -63,6 +63,14 @@ fun NativeMobileBrowserView(
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var currentUrl by remember { mutableStateOf(url) }
     var hasLoadedTunnelUrl by remember { mutableStateOf(false) }
+    val tunnelActiveState by rememberUpdatedState(isTunnelActive)
+
+    fun isShieldActive(): Boolean {
+        return tunnelActiveState || 
+            com.vpsbrowser.app.cloud.CloudTunnelManager.isTunnelActive() || 
+            com.vpsbrowser.app.engine.VpsProxyController.isProxyActive() ||
+            com.vpsbrowser.app.ssh.SshTunnelManager.isSocksProxyActive()
+    }
 
     fun injectDevTunnelsBypass(view: WebView?) {
         val bypassJs = """
@@ -99,20 +107,14 @@ fun NativeMobileBrowserView(
         object : VpsEngineController {
             override fun loadUrl(url: String) {
                 currentUrl = url
-                val active = tunnelActiveState || 
-                    com.vpsbrowser.app.cloud.CloudTunnelManager.isTunnelActive() || 
-                    com.vpsbrowser.app.engine.VpsProxyController.isProxyActive()
-                if (active) {
+                if (isShieldActive()) {
                     hasLoadedTunnelUrl = true
                     webViewRef?.loadUrl(url)
                 }
             }
 
             override fun reload() {
-                val active = tunnelActiveState || 
-                    com.vpsbrowser.app.cloud.CloudTunnelManager.isTunnelActive() || 
-                    com.vpsbrowser.app.engine.VpsProxyController.isProxyActive()
-                if (active) {
+                if (isShieldActive()) {
                     hasLoadedTunnelUrl = true
                     val wv = webViewRef
                     if (wv != null) {
@@ -183,15 +185,6 @@ fun NativeMobileBrowserView(
 
             override fun getCurrentUrl(): String = currentUrl
         }
-    }
-
-    val tunnelActiveState by rememberUpdatedState(isTunnelActive)
-
-    fun isShieldActive(): Boolean {
-        return tunnelActiveState || 
-            com.vpsbrowser.app.cloud.CloudTunnelManager.isTunnelActive() || 
-            com.vpsbrowser.app.engine.VpsProxyController.isProxyActive() ||
-            com.vpsbrowser.app.ssh.SshTunnelManager.isSocksProxyActive()
     }
 
     LaunchedEffect(controller) {
