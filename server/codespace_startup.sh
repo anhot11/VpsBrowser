@@ -3,22 +3,22 @@ set -e
 
 echo "=== [VPS Browser Cloud] Iniciando entorno seguro nativo (Sin sobrecarga de Docker) ==="
 
-# 1. Detener Docker si estuviese corriendo para liberar 100% de CPU y RAM
-if command -v docker >/dev/null 2>&1; then
-    docker stop vps-firefox 2>/dev/null || true
-    docker rm vps-firefox 2>/dev/null || true
-fi
-
-# 2. Instalar dependencias nativas de Python ultraligeras (toma ~2 segundos)
-if ! python3 -c "import websockets" >/dev/null 2>&1; then
-    echo "Instalando módulo nativo websockets para bridge cloud..."
-    sudo apt-get update -y && sudo apt-get install -y python3-websockets 2>/dev/null || pip3 install --no-cache-dir websockets 2>/dev/null || true
-fi
-
-# 3. Iniciar el Cloud Bridge nativo en puerto 3000
-echo "Iniciando VPS Browser Cloud Bridge en puerto 3000..."
+# 1. Detener cualquier instancia previa
 pkill -f "cloud_bridge.py" 2>/dev/null || true
-nohup python3 server/cloud_bridge.py 3000 >/tmp/cloud_bridge.log 2>&1 &
+
+# 2. Iniciar el Cloud Bridge nativo (100% Python standard library, zero pip/apt dependencies)
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+nohup python3 "$DIR/cloud_bridge.py" 3000 </dev/null >/tmp/cloud_bridge.log 2>&1 &
+
+# 3. Watchdog en segundo plano para garantizar alta disponibilidad
+(
+    while true; do
+        sleep 5
+        if ! pgrep -f "cloud_bridge.py" >/dev/null 2>&1; then
+            nohup python3 "$DIR/cloud_bridge.py" 3000 </dev/null >>/tmp/cloud_bridge.log 2>&1 &
+        fi
+    done
+) </dev/null >/dev/null 2>&1 &
 
 # 4. Asegurar visibilidad pública de puertos en Dev Tunnels
 set_public_ports() {
@@ -31,11 +31,10 @@ set_public_ports() {
     fi
 }
 
-echo "Configurando visibilidad pública de puerto 3000 en Dev Tunnels..."
 set_public_ports
 
 (
-    for attempt in {1..10}; do
+    for attempt in {1..5}; do
         sleep 2
         set_public_ports
     done

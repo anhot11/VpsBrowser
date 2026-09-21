@@ -78,7 +78,7 @@ object CloudTunnelManager {
             isRunning = true
 
             threadPool.submit {
-                Log.d(TAG, "CloudTunnelManager listening on 127.0.0.1:$activePort -> wss://$activeHost")
+                Log.i(TAG, "CloudTunnelManager listening on 127.0.0.1:$activePort -> wss://$activeHost")
                 while (isRunning && !s.isClosed) {
                     try {
                         val client = s.accept()
@@ -257,6 +257,7 @@ object CloudTunnelManager {
 
         val listener = object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                Log.i(TAG, "✓ WebSocket connected to $targetHost:$targetPort via $cloudHost")
                 webSocketRef = webSocket
                 try {
                     onConnected()
@@ -282,6 +283,7 @@ object CloudTunnelManager {
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                Log.e(TAG, "✗ WebSocket connection failed to $targetHost:$targetPort (${t.message}, HTTP ${response?.code})")
                 connectedLatch.countDown()
                 closeAll()
             }

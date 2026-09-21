@@ -61,6 +61,7 @@ fun NativeMobileBrowserView(
 ) {
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var currentUrl by remember { mutableStateOf(url) }
+    var hasLoadedTunnelUrl by remember { mutableStateOf(false) }
 
     fun injectDevTunnelsBypass(view: WebView?) {
         val bypassJs = """
@@ -94,17 +95,26 @@ fun NativeMobileBrowserView(
     }
 
     val controller = remember(webViewRef, isTunnelActive) {
-        object : VpsEngineController {
             override fun loadUrl(url: String) {
                 currentUrl = url
                 if (isTunnelActive) {
+                    hasLoadedTunnelUrl = true
                     webViewRef?.loadUrl(url)
                 }
             }
 
             override fun reload() {
                 if (isTunnelActive) {
-                    webViewRef?.reload()
+                    hasLoadedTunnelUrl = true
+                    val wv = webViewRef
+                    if (wv != null) {
+                        val cur = wv.url
+                        if (cur.isNullOrBlank() || cur == "about:blank") {
+                            wv.loadUrl(currentUrl.ifBlank { "https://duckduckgo.com" })
+                        } else {
+                            wv.reload()
+                        }
+                    }
                 }
             }
 
@@ -152,9 +162,9 @@ fun NativeMobileBrowserView(
                 settings.userAgentString = if (enabled) {
                     "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"
                 } else {
-                    "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
+                    "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
                 }
-                settings.useWideViewPort = enabled
+                settings.useWideViewPort = true
                 settings.loadWithOverviewMode = enabled
                 webViewRef?.reload()
             }
@@ -172,12 +182,15 @@ fun NativeMobileBrowserView(
     }
 
     LaunchedEffect(url, isTunnelActive) {
-        if (url.isNotBlank() && isTunnelActive && url != currentUrl) {
-            currentUrl = url
-            webViewRef?.loadUrl(url)
+        if (url.isNotBlank() && isTunnelActive) {
+            if (!hasLoadedTunnelUrl || url != currentUrl) {
+                currentUrl = url
+                hasLoadedTunnelUrl = true
+                webViewRef?.loadUrl(url)
+            }
         } else if (!isTunnelActive) {
+            hasLoadedTunnelUrl = false
             webViewRef?.stopLoading()
-            webViewRef?.loadUrl("about:blank")
         }
     }
 
@@ -221,13 +234,13 @@ fun NativeMobileBrowserView(
                         mediaPlaybackRequiresUserGesture = false
                         mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
 
-                        useWideViewPort = false
-                        loadWithOverviewMode = false
+                        useWideViewPort = true
+                        loadWithOverviewMode = true
                         setSupportZoom(true)
                         builtInZoomControls = true
                         displayZoomControls = false
 
-                        userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
+                        userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
                         cacheMode = WebSettings.LOAD_DEFAULT
                     }
 
@@ -328,19 +341,13 @@ fun NativeMobileBrowserView(
                             // Drop 100% of outgoing requests if the VPS tunnel is not confirmed active
                             if (!isTunnelActive) {
                                 android.util.Log.e("VPS_KILL_SWITCH", "🛡️ BLOQUEADO POR KILL-SWITCH: Intento de fuga hacia ${request.url}")
-                                val blockedHtml = """
-                                    <!DOCTYPE html>
-                                    <html>
-                                    <body style="background:#0d1117;color:#f85149;display:flex;flex-direction:column;align-items:center;justify-content:center;height:90vh;font-family:sans-serif;text-align:center;padding:24px;">
-                                        <h2>🛡️ Escudo Anti-Fugas Activo (Kill-Switch)</h2>
-                                        <p style="color:#8b949e;font-size:14px;">Conexión directa bloqueada. Todo el tráfico de tu IP está bloqueado hasta que el túnel seguro de la VPS esté activo.</p>
-                                    </body>
-                                    </html>
-                                """.trimIndent()
                                 return WebResourceResponse(
-                                    "text/html",
+                                    "text/plain",
                                     "UTF-8",
-                                    ByteArrayInputStream(blockedHtml.toByteArray(Charsets.UTF_8))
+                                    403,
+                                    "Blocked by Kill-Switch",
+                                    mapOf("Cache-Control" to "no-store, no-cache, must-revalidate"),
+                                    ByteArrayInputStream(byteArrayOf())
                                 )
                             }
 
