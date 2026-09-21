@@ -238,11 +238,9 @@ fun BrowserScreen(
                         connectionError = "🛡️ Escudo Anti-Fugas Activo: No se pudo conectar a la VPS (${err.message}). Todas las conexiones de tu IP han sido bloqueadas por seguridad."
                     }
                     return@launch
-                }
-            }
-            
-            // Remote Desktop Mode (KasmVNC on VPS/Codespace)
-            VpsProxyController.clearProxy()
+            } else {
+                // Remote Desktop Mode (KasmVNC on VPS/Codespace)
+                VpsProxyController.clearProxy()
                 when (profile.connectionMode) {
                     "cloudflare", "codespace" -> {
                         if (profile.cloudflareUrl.isNotBlank()) {
