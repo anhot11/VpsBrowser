@@ -658,7 +658,30 @@ fun ServerManagerScreen(
                         )
 
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text("Zona de Desconexión", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = StatusRed)
+                        Text("Zona de Desconexión y Limpieza", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = StatusRed)
+
+                        CleanToolCard(
+                            icon = Icons.Default.Delete,
+                            title = "Eliminar Codespace en GitHub Cloud",
+                            description = "Destruye esta máquina virtual en tu cuenta de GitHub para permitir crear un entorno 100% nuevo y limpio.",
+                            buttonText = "Eliminar en Cloud",
+                            isDestructive = true,
+                            enabled = actionInProgress == null,
+                            onClick = {
+                                val token = SecurityManager(context).getGitHubToken()
+                                val codespaceName = profile.host.substringBefore("-3000.app.github.dev").substringBefore(".app.github.dev")
+                                if (token.isNullOrBlank() || codespaceName.isBlank()) {
+                                    actionMessage = "No se encontró el token de GitHub asociado."
+                                } else {
+                                    actionInProgress = "Eliminando máquina virtual en GitHub..."
+                                    scope.launch {
+                                        val res = GitHubCodespacesManager.deleteCodespace(token, codespaceName)
+                                        actionInProgress = null
+                                        actionMessage = if (res.isSuccess) "✓ Codespace eliminado en GitHub con éxito. Ahora puedes crearlo limpio desde el Asistente." else "Error: ${res.exceptionOrNull()?.message}"
+                                    }
+                                }
+                            }
+                        )
 
                         CleanToolCard(
                             icon = Icons.Default.DeleteForever,

@@ -10,6 +10,9 @@ import android.view.ViewGroup
 import android.webkit.HttpAuthHandler
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -24,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import com.vpsbrowser.app.model.VpsProfile
+import com.vpsbrowser.app.security.SecurityManager
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -35,14 +39,25 @@ fun FirefoxTurboBrowserView(
     onEngineReady: (VpsEngineController) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var currentUrl by remember { mutableStateOf(url) }
+
+    fun loadWithHeaders(targetUrl: String) {
+        currentUrl = targetUrl
+        val token = SecurityManager(context).getGitHubToken()
+        if (profile.isCodespace() && !token.isNullOrBlank() && targetUrl.contains(".app.github.dev")) {
+            val headers = mapOf("X-Github-Token" to token.trim())
+            webViewRef?.loadUrl(targetUrl, headers)
+        } else {
+            webViewRef?.loadUrl(targetUrl)
+        }
+    }
 
     val controller = remember(webViewRef) {
         object : VpsEngineController {
             override fun loadUrl(url: String) {
-                currentUrl = url
-                webViewRef?.loadUrl(url)
+                loadWithHeaders(url)
             }
 
             override fun reload() {
@@ -121,14 +136,66 @@ fun FirefoxTurboBrowserView(
         }
     }
 
+    fun showRetryPage(view: WebView?, targetUrl: String) {
+        val html = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+                <style>
+                    body {
+                        margin: 0; padding: 24px;
+                        background: #0d1117; color: #c9d1d9;
+                        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                        display: flex; flex-direction: column; align-items: center; justify-content: center;
+                        min-height: 85vh; text-align: center; box-sizing: border-box;
+                    }
+                    .spinner {
+                        width: 48px; height: 48px;
+                        border: 4px solid #21262d;
+                        border-top: 4px solid #58a6ff;
+                        border-radius: 50%;
+                        animation: spin 1s linear infinite;
+                        margin-bottom: 20px;
+                    }
+                    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+                    h2 { color: #58a6ff; margin: 0 0 10px 0; font-size: 20px; font-weight: 600; }
+                    p { color: #8b949e; font-size: 14px; margin: 0 0 24px 0; max-width: 320px; line-height: 1.5; }
+                    .btn {
+                        background: #238636; color: white; border: none;
+                        padding: 12px 28px; border-radius: 8px; font-weight: 600; font-size: 15px;
+                        cursor: pointer; text-decoration: none; box-shadow: 0 4px 12px rgba(35,134,54,0.3);
+                    }
+                    .btn:active { background: #2ea043; }
+                    .badge {
+                        margin-top: 20px; font-size: 12px; color: #6e7681;
+                        background: #161b22; padding: 6px 12px; border-radius: 12px;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="spinner"></div>
+                <h2>Iniciando Servidor Cloud...</h2>
+                <p>GitHub Codespaces está preparando Firefox en la nube. Conectando automáticamente en unos segundos...</p>
+                <button class="btn" onclick="retryNow()">Reintentar Ahora</button>
+                <div class="badge">Reintento automático activo</div>
+                <script>
+                    function retryNow() { window.location.href = '$targetUrl'; }
+                    setTimeout(retryNow, 4000);
+                </script>
+            </body>
+            </html>
+        """.trimIndent()
+        view?.loadDataWithBaseURL("https://github.com", html, "text/html", "utf-8", null)
+    }
+
     LaunchedEffect(controller) {
         onEngineReady(controller)
     }
 
     LaunchedEffect(url) {
         if (url.isNotBlank() && url != currentUrl) {
-            currentUrl = url
-            webViewRef?.loadUrl(url)
+            loadWithHeaders(url)
         }
     }
 
@@ -181,6 +248,26 @@ fun FirefoxTurboBrowserView(
                         controller.injectTurboOptimizations()
                     }
 
+                    override fun onReceivedError(
+                        view: WebView?,
+                        request: WebResourceRequest?,
+                        error: WebResourceError?
+                    ) {
+                        if (request?.isForMainFrame == true && profile.isCodespace()) {
+                            showRetryPage(view, currentUrl)
+                        }
+                    }
+
+                    override fun onReceivedHttpError(
+                        view: WebView?,
+                        request: WebResourceRequest?,
+                        errorResponse: WebResourceResponse?
+                    ) {
+                        if (request?.isForMainFrame == true && profile.isCodespace() && (errorResponse?.statusCode ?: 0) in 400..599) {
+                            showRetryPage(view, currentUrl)
+                        }
+                    }
+
                     override fun onReceivedHttpAuthRequest(
                         view: WebView?,
                         handler: HttpAuthHandler?,
@@ -199,7 +286,7 @@ fun FirefoxTurboBrowserView(
 
                 webViewRef = this
                 if (currentUrl.isNotBlank()) {
-                    loadUrl(currentUrl)
+                    loadWithHeaders(currentUrl)
                 }
             }
         },

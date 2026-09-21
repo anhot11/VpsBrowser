@@ -35,12 +35,14 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -178,6 +180,8 @@ fun SetupWizardScreen(
         }
     }
 
+    var recreateCleanCodespace by remember { mutableStateOf(false) }
+
     val startCloudDeployment: () -> Unit = {
         val token = githubToken.trim()
         if (token.isBlank()) {
@@ -191,6 +195,7 @@ fun SetupWizardScreen(
             scope.launch {
                 val result = GitHubCodespacesManager.orchestrateCloudBrowser(
                     token = token,
+                    recreateClean = recreateCleanCodespace,
                     onProgress = { title, pct ->
                         scope.launch(Dispatchers.Main) {
                             deployStepTitle = title
@@ -423,20 +428,52 @@ fun SetupWizardScreen(
                                 }
                             }
 
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { recreateCleanCodespace = !recreateCleanCodespace }
+                                    .padding(vertical = 4.dp, horizontal = 2.dp)
+                            ) {
+                                Checkbox(
+                                    checked = recreateCleanCodespace,
+                                    onCheckedChange = { recreateCleanCodespace = it }
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Recrear entorno limpio (recomendado si falló antes)",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
                             errorMessage?.let { msg ->
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .border(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                                ) {
-                                    Text(
-                                        text = msg,
-                                        color = MaterialTheme.colorScheme.error,
-                                        fontSize = 12.sp,
-                                        modifier = Modifier.padding(10.dp)
-                                    )
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .border(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                    ) {
+                                        Text(
+                                            text = msg,
+                                            color = MaterialTheme.colorScheme.error,
+                                            fontSize = 12.sp,
+                                            modifier = Modifier.padding(10.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    OutlinedButton(
+                                        onClick = {
+                                            recreateCleanCodespace = true
+                                            startCloudDeployment()
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("🔄 Recrear Entorno Limpio desde Cero", fontWeight = FontWeight.SemiBold)
+                                    }
                                 }
                             }
 

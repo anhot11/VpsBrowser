@@ -46,4 +46,29 @@ if [ ! "$(docker ps -q -f name=vps-proxy)" ]; then
     fi
 fi
 
-echo "=== [VPS Browser Cloud] Servidor activo en puerto 3000 y 8080 ==="
+# Función para asegurar visibilidad pública de puertos 3000 y 8080 en GitHub Dev Tunnels
+set_public_ports() {
+    if command -v gh >/dev/null 2>&1; then
+        if [ -n "$CODESPACE_NAME" ]; then
+            gh codespace ports visibility 3000:public -c "$CODESPACE_NAME" 2>/dev/null || true
+            gh codespace ports visibility 8080:public -c "$CODESPACE_NAME" 2>/dev/null || true
+        else
+            gh codespace ports visibility 3000:public 2>/dev/null || true
+            gh codespace ports visibility 8080:public 2>/dev/null || true
+        fi
+    fi
+}
+
+echo "Configurando visibilidad pública de puertos..."
+set_public_ports
+
+# Lanzar vigilancia en segundo plano para reasegurar visibilidad pública mientras Dev Tunnels vincula los puertos
+(
+    for attempt in {1..20}; do
+        sleep 3
+        set_public_ports
+    done
+) >/dev/null 2>&1 &
+
+echo "=== [VPS Browser Cloud] Servidor activo en puerto 3000 y 8080 (Público) ==="
+

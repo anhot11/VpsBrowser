@@ -286,17 +286,45 @@ object GitHubCodespacesManager {
     }
 
     /**
+     * Elimina un Codespace existente para permitir crear uno limpio desde cero.
+     */
+    suspend fun deleteCodespace(
+        token: String,
+        codespaceName: String
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder()
+                .url("$GITHUB_API_BASE/user/codespaces/$codespaceName")
+                .headers(buildHeaders(token))
+                .delete()
+                .build()
+
+            httpClient.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful || resp.code == 202 || resp.code == 204 || resp.code == 404) {
+                    Result.success(Unit)
+                } else {
+                    val body = resp.body?.string().orEmpty()
+                    Result.failure(Exception("Error al eliminar Codespace (${resp.code}): $body"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Orquestador completo y 100% autónomo.
      * El usuario solo proporciona su cuenta/token de GitHub y el orquestador se encarga de:
      * 1. Validar la cuenta.
      * 2. Buscar si ya existe un Codespace para VPSBrowser o crearlo en la nube.
-     * 3. Reanudarlo si estaba dormido.
+     * 3. Reanudarlo si estaba dormido (o recrearlo limpio si se solicita).
      * 4. Esperar a que la máquina virtual Cloud esté 100% 'Available'.
-     * 5. Configurar los puertos y generar la URL final HTTPS.
-     * 6. Devolver el VpsProfile listo para navegar inmediatamente.
+     * 5. Sondear activamente la URL web hasta que Firefox responda HTTP 200 OK.
+     * 6. Devolver el VpsProfile listo para navegar inmediatamente sin errores 404.
      */
     suspend fun orchestrateCloudBrowser(
         token: String,
+        recreateClean: Boolean = false,
         onProgress: (stepTitle: String, percentage: Int) -> Unit,
         onLog: (String) -> Unit
     ): Result<VpsProfile> = withContext(Dispatchers.IO) {
@@ -324,6 +352,14 @@ object GitHubCodespacesManager {
                 it.repositoryFullName.endsWith("/VpsBrowser", ignoreCase = true) ||
                 it.name.contains("vps", ignoreCase = true)
             } ?: existingList.firstOrNull()
+
+            if (recreateClean && targetCodespace != null) {
+                onProgress("Eliminando Codespace previo para reconstrucción limpia...", 25)
+                onLog(">>> Eliminando entorno previo: ${targetCodespace.name}...")
+                deleteCodespace(token, targetCodespace.name)
+                delay(3000)
+                targetCodespace = null
+            }
 
             var codespaceName = ""
 
@@ -370,13 +406,13 @@ object GitHubCodespacesManager {
                     val info = pollRes.getOrThrow()
                     lastState = info.state
                     val elapsedSec = attempts * 3
-                    val currentPct = (45 + (attempts * 0.35f)).toInt().coerceAtMost(88)
+                    val currentPct = (45 + (attempts * 0.35f)).toInt().coerceAtMost(80)
 
                     val statusMsg = when (lastState.lowercase()) {
                         "provisioning" -> "Aprovisionando máquina Azure ($elapsedSec s)..."
                         "starting" -> "Arrancando máquina virtual ($elapsedSec s)..."
                         "rebuilding" -> "Reconstruyendo entorno ($elapsedSec s)..."
-                        "available" -> "¡Máquina lista! Enrutando navegador..."
+                        "available" -> "¡Máquina lista! Verificando servidor web..."
                         else -> "Estado Cloud: $lastState ($elapsedSec s)..."
                     }
 
@@ -397,16 +433,50 @@ object GitHubCodespacesManager {
                 )
             }
 
-            onProgress("Configurando puerto seguro HTTPS...", 90)
-            onLog(">>> Ajustando visibilidad pública del puerto 3000 y 8080...")
-
-            delay(2000)
-            // Configurar puertos como públicos para permitir WebView
-            setPortVisibility(token, codespaceName, 3000, "public")
-            setPortVisibility(token, codespaceName, 8080, "public")
-
             val codespaceHost = "$codespaceName-3000.app.github.dev"
             val directWebUrl = "https://$codespaceHost/"
+
+            onProgress("Esperando arranque de Firefox remoto en la nube...", 82)
+            onLog(">>> Verificando disponibilidad de la interfaz web en $directWebUrl...")
+
+            var isWebReady = false
+            val probeClient = httpClient.newBuilder()
+                .followRedirects(true)
+                .callTimeout(java.time.Duration.ofSeconds(6))
+                .build()
+
+            val cleanToken = token.trim()
+            val maxProbes = 40 // 40 sondeos * 3s = 120 segundos
+            for (probe in 1..maxProbes) {
+                try {
+                    val probeReq = Request.Builder()
+                        .url(directWebUrl)
+                        .addHeader("X-Github-Token", cleanToken)
+                        .get()
+                        .build()
+                    val probeResp = probeClient.newCall(probeReq).execute()
+                    val code = probeResp.code
+                    probeResp.close()
+
+                    val pct = 82 + (probe * 17 / maxProbes)
+                    onProgress("Iniciando contenedor web Firefox ($probe/$maxProbes)...", pct)
+
+                    if (code in 200..399) {
+                        isWebReady = true
+                        onLog(">>> ✓ Interfaz web lista y respondiendo exitosamente (HTTP $code).")
+                        break
+                    } else {
+                        onLog(">>> Esperando servidor Firefox en Cloud (Intento $probe/$maxProbes): HTTP $code")
+                    }
+                } catch (e: Exception) {
+                    onLog(">>> Esperando respuesta del túnel Cloud ($probe/$maxProbes): ${e.message ?: "Conectando..."}")
+                }
+                delay(3000)
+            }
+
+            if (!isWebReady) {
+                onLog(">>> Aviso: La máquina Cloud está encendida, pero Firefox todavía se encuentra cargando en segundo plano.")
+            }
 
             onProgress("¡Navegador Cloud listo para usar!", 100)
             onLog(">>> ✓ URL de conexión segura generada: $directWebUrl")
