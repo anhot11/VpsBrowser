@@ -63,7 +63,6 @@ fun NativeMobileBrowserView(
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var currentUrl by remember { mutableStateOf(url) }
     var hasLoadedTunnelUrl by remember { mutableStateOf(false) }
-    val tunnelActiveState by rememberUpdatedState(isTunnelActive)
 
     fun injectDevTunnelsBypass(view: WebView?) {
         val bypassJs = """
