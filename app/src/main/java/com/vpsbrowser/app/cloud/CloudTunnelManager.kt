@@ -12,6 +12,7 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
 import okio.ByteString.Companion.toByteString
+import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetAddress
@@ -130,7 +131,7 @@ object CloudTunnelManager {
             if (firstByte == 0x05) {
                 handleSocks5(socket, inStream, outStream, host)
             } else {
-                handleHttpConnect(socket, inStream, outStream, firstByte, host)
+                handleHttpProxy(socket, inStream, outStream, firstByte, host)
             }
         } catch (e: Exception) {
             Log.d(TAG, "Client handle error: ${e.message}")
@@ -201,45 +202,84 @@ object CloudTunnelManager {
         }
     }
 
-    private fun handleHttpConnect(socket: Socket, inStream: InputStream, outStream: OutputStream, firstByte: Int, cloudHost: String) {
-        val lineBuf = StringBuilder()
-        lineBuf.append(firstByte.toChar())
+    private fun handleHttpProxy(socket: Socket, inStream: InputStream, outStream: OutputStream, firstByte: Int, cloudHost: String) {
+        val lineBuf = ByteArrayOutputStream()
+        lineBuf.write(firstByte)
 
-        var b = inStream.read()
-        while (b != -1 && b != '\n'.code) {
-            if (b != '\r'.code) lineBuf.append(b.toChar())
-            b = inStream.read()
+        while (true) {
+            val b = inStream.read()
+            if (b < 0) {
+                socket.close()
+                return
+            }
+            if (b == '\n'.code) break
+            if (b != '\r'.code) {
+                lineBuf.write(b)
+            }
         }
 
-        val reqLine = lineBuf.toString().trim()
-        if (!reqLine.startsWith("CONNECT ", ignoreCase = true)) {
+        val reqLine = lineBuf.toString("UTF-8").trim()
+        if (reqLine.isBlank()) {
             socket.close()
             return
         }
 
         val parts = reqLine.split(" ")
-        if (parts.size < 2) { socket.close(); return }
-
-        val hostPort = parts[1].split(":")
-        val targetHost = hostPort[0]
-        val targetPort = if (hostPort.size > 1) hostPort[1].toIntOrNull() ?: 443 else 443
-
-        // Drain headers until empty line
-        var emptyCount = 0
-        while (true) {
-            val c = inStream.read()
-            if (c == -1) break
-            if (c == '\n'.code) {
-                emptyCount++
-                if (emptyCount >= 2) break
-            } else if (c != '\r'.code) {
-                emptyCount = 0
-            }
+        if (parts.size < 2) {
+            socket.close()
+            return
         }
 
-        pipeSocketThroughWebSocket(socket, inStream, outStream, cloudHost, targetHost, targetPort) {
-            outStream.write("HTTP/1.1 200 Connection Established\r\n\r\n".toByteArray(Charsets.UTF_8))
-            outStream.flush()
+        val method = parts[0]
+        val target = parts[1]
+
+        if (method.equals("CONNECT", ignoreCase = true)) {
+            // Drain remaining headers cleanly line-by-line until empty line RFC 7230
+            skipHeaders(inStream)
+
+            val hostPort = target.split(":")
+            val targetHost = hostPort[0]
+            val targetPort = if (hostPort.size > 1) hostPort[1].toIntOrNull() ?: 443 else 443
+
+            pipeSocketThroughWebSocket(socket, inStream, outStream, cloudHost, targetHost, targetPort) {
+                outStream.write("HTTP/1.1 200 Connection Established\r\nProxy-Agent: VPSBrowser-Cloud\r\n\r\n".toByteArray(Charsets.US_ASCII))
+                outStream.flush()
+            }
+        } else {
+            // Plain HTTP request (GET / POST / HEAD ...)
+            val uri = try {
+                java.net.URI(target)
+            } catch (_: Exception) {
+                null
+            }
+            val targetHost = uri?.host ?: target.split("/")[0].split(":")[0]
+            val targetPort = if (uri?.port != null && uri.port > 0) uri.port else 80
+
+            val rawPath = if (uri != null) {
+                val raw = (uri.rawPath ?: "/") + if (uri.rawQuery != null) "?${uri.rawQuery}" else ""
+                if (raw.isBlank()) "/" else raw
+            } else {
+                target
+            }
+            val rewrittenLine = "$method $rawPath ${parts.getOrNull(2) ?: "HTTP/1.1"}\r\n"
+
+            pipeSocketThroughWebSocket(socket, inStream, outStream, cloudHost, targetHost, targetPort, initialData = rewrittenLine.toByteArray(Charsets.UTF_8)) {
+                // No proxy handshake response needed for plain HTTP
+            }
+        }
+    }
+
+    private fun skipHeaders(inStream: InputStream) {
+        val line = ByteArrayOutputStream()
+        while (true) {
+            line.reset()
+            while (true) {
+                val b = inStream.read()
+                if (b < 0) return
+                if (b == '\n'.code) break
+                if (b != '\r'.code) line.write(b)
+            }
+            if (line.size() == 0) break // Empty line terminates HTTP headers RFC 7230
         }
     }
 
@@ -250,6 +290,7 @@ object CloudTunnelManager {
         cloudHost: String,
         targetHost: String,
         targetPort: Int,
+        initialData: ByteArray? = null,
         onConnected: () -> Unit
     ) {
         val wsUrl = "wss://$cloudHost/tunnel?host=$targetHost&port=$targetPort"
@@ -266,6 +307,9 @@ object CloudTunnelManager {
                 Log.i(TAG, "✓ WebSocket connected to $targetHost:$targetPort via $cloudHost")
                 webSocketRef = webSocket
                 try {
+                    if (initialData != null) {
+                        webSocket.send(initialData.toByteString())
+                    }
                     onConnected()
                 } catch (e: Exception) {
                     closeAll()
@@ -325,6 +369,11 @@ object CloudTunnelManager {
             }
         } catch (_: Exception) {
         } finally {
+            if (!isClosed.get()) {
+                try {
+                    Thread.sleep(250) // Grace period for in-flight response packets
+                } catch (_: Exception) {}
+            }
             if (isClosed.compareAndSet(false, true)) {
                 try { socket.close() } catch (_: Exception) {}
                 try { webSocketRef?.close(1000, "Done") } catch (_: Exception) {}

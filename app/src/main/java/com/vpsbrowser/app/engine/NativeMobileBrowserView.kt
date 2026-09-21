@@ -271,7 +271,7 @@ fun NativeMobileBrowserView(
 
                         // Cloudflare Turnstile & Web Security Compatibility
                         javaScriptCanOpenWindowsAutomatically = true
-                        setSupportMultipleWindows(false)
+                        setSupportMultipleWindows(true)
                         loadsImagesAutomatically = true
                         blockNetworkImage = false
                         blockNetworkLoads = false
@@ -355,6 +355,36 @@ fun NativeMobileBrowserView(
                         override fun onJsConfirm(view: WebView?, url: String?, message: String?, result: JsResult?): Boolean {
                             result?.confirm()
                             return true
+                        }
+
+                        override fun onCreateWindow(
+                            view: WebView?,
+                            isDialog: Boolean,
+                            isUserGesture: Boolean,
+                            resultMsg: android.os.Message?
+                        ): Boolean {
+                            val context = view?.context ?: return false
+                            val popupWebView = WebView(context).apply {
+                                settings.javaScriptEnabled = true
+                                settings.domStorageEnabled = true
+                                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                                webViewClient = object : WebViewClient() {
+                                    override fun shouldOverrideUrlLoading(v: WebView?, request: WebResourceRequest?): Boolean {
+                                        request?.url?.let { uri ->
+                                            view.loadUrl(uri.toString())
+                                        }
+                                        return true
+                                    }
+                                }
+                            }
+                            val transport = resultMsg?.obj as? WebView.WebViewTransport
+                            transport?.webView = popupWebView
+                            resultMsg?.sendToTarget()
+                            return true
+                        }
+
+                        override fun onCloseWindow(window: WebView?) {
+                            try { window?.destroy() } catch (_: Exception) {}
                         }
                     }
 

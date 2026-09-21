@@ -8,6 +8,7 @@ Listens on port 3000 (forwarded as public by GitHub Codespaces Dev Tunnels).
 import asyncio
 import base64
 import hashlib
+import socket
 import struct
 import sys
 import urllib.parse
@@ -52,10 +53,11 @@ async def read_ws_frame(reader):
     except (asyncio.IncompleteReadError, ConnectionResetError, OSError):
         return 8, b""
 
+    # Fast 4-byte slice unmasking
     if is_masked and mask:
-        unmasked = bytearray(payload_len)
-        for i in range(payload_len):
-            unmasked[i] = payload[i] ^ mask[i % 4]
+        unmasked = bytearray(payload)
+        for i in range(4):
+            unmasked[i::4] = bytes(b ^ mask[i] for b in unmasked[i::4])
         payload = bytes(unmasked)
 
     return opcode, payload
@@ -73,6 +75,14 @@ def make_ws_frame(data, opcode=2):
 
 async def handle_client(reader, writer):
     try:
+        # Enable TCP_NODELAY on client connection
+        client_sock = writer.get_extra_info("socket")
+        if client_sock:
+            try:
+                client_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            except Exception:
+                pass
+
         raw_req = b""
         while b"\r\n\r\n" not in raw_req:
             chunk = await reader.read(4096)
@@ -119,9 +129,31 @@ async def handle_client(reader, writer):
             writer.close()
             return
 
-        target_port = int(target_port_str)
+        try:
+            target_port = int(target_port_str)
+        except ValueError:
+            writer.close()
+            return
 
-        # Complete WebSocket handshake
+        # Connect to destination TCP endpoint FIRST from inside Cloud VM
+        try:
+            target_reader, target_writer = await asyncio.wait_for(
+                asyncio.open_connection(target_host, target_port),
+                timeout=12.0
+            )
+            target_sock = target_writer.get_extra_info("socket")
+            if target_sock:
+                try:
+                    target_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                except Exception:
+                    pass
+        except Exception:
+            writer.write(b"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+            await writer.drain()
+            writer.close()
+            return
+
+        # Destination TCP connected! Now complete WebSocket handshake
         ws_key = headers.get("sec-websocket-key", "")
         accept_raw = hashlib.sha1((ws_key + GUID).encode("utf-8")).digest()
         accept_str = base64.b64encode(accept_raw).decode("ascii")
@@ -135,18 +167,6 @@ async def handle_client(reader, writer):
         writer.write(handshake_resp)
         await writer.drain()
 
-        # Connect to destination TCP endpoint from inside Cloud VM
-        try:
-            target_reader, target_writer = await asyncio.wait_for(
-                asyncio.open_connection(target_host, target_port),
-                timeout=12.0
-            )
-        except Exception:
-            writer.write(make_ws_frame(b"", opcode=8))
-            await writer.drain()
-            writer.close()
-            return
-
         # Bi-directional stream forwarding
         async def client_to_target():
             try:
@@ -154,17 +174,22 @@ async def handle_client(reader, writer):
                     opcode, payload = await read_ws_frame(reader)
                     if opcode == 8: # Close frame
                         break
-                    elif opcode in (1, 2): # Text or Binary frame
+                    elif opcode in (0, 1, 2): # Continuation, Text or Binary frame
                         target_writer.write(payload)
                         await target_writer.drain()
-                    elif opcode == 9: # Ping frame
+                    elif opcode == 9: # Ping frame -> Pong reply
                         writer.write(make_ws_frame(payload, opcode=10))
                         await writer.drain()
+                    elif opcode == 10: # Pong frame (heartbeat ack)
+                        pass
             except Exception:
                 pass
             finally:
-                try: target_writer.close()
-                except Exception: pass
+                try:
+                    if hasattr(target_writer, "write_eof"):
+                        target_writer.write_eof()
+                except Exception:
+                    pass
 
         async def target_to_client():
             try:
@@ -183,21 +208,25 @@ async def handle_client(reader, writer):
                     await writer.drain()
                 except Exception:
                     pass
-                try: writer.close()
-                except Exception: pass
+                try:
+                    target_writer.close()
+                except Exception:
+                    pass
 
         await asyncio.gather(client_to_target(), target_to_client(), return_exceptions=True)
 
     except Exception:
         pass
     finally:
-        try: writer.close()
-        except Exception: pass
+        try:
+            writer.close()
+        except Exception:
+            pass
 
 async def main():
-    print(f"=== [VPS Browser Cloud Bridge] Starting native tunnel on 0.0.0.0:{PORT} ===")
+    print(f"=== [VPS Browser Cloud Bridge] Starting native tunnel on 0.0.0.0:{PORT} ===", flush=True)
     server = await asyncio.start_server(handle_client, "0.0.0.0", PORT)
-    print(f"=== [VPS Browser Cloud Bridge] Listening on 0.0.0.0:{PORT} (Zero dependencies) ===")
+    print(f"=== [VPS Browser Cloud Bridge] Listening on 0.0.0.0:{PORT} (Zero dependencies) ===", flush=True)
     async with server:
         await server.serve_forever()
 
