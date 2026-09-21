@@ -194,14 +194,36 @@ fun BrowserScreen(
                 activeRouteName = "🛡️ Cifrando Túnel..."
 
                 if (profile.isCodespace()) {
-                    // GitHub Codespaces Cloud Engine:
-                    // Remote Desktop KasmVNC runs 100% inside the cloud VM on port 3000.
-                    // This guarantees zero IP leakage as the Cloud VM executes the browser.
-                    activeRouteName = "☁️ Codespace Cloud"
-                    browserMode = "remote_desktop"
-                    profile.browserMode = "remote_desktop"
-                    onSaveProfile(profile)
-                    // Continue to remote desktop branch below
+                    isConnectingTunnel = true
+                    activeRouteName = "☁️ Túnel Cloud..."
+                    val cloudRes = com.vpsbrowser.app.cloud.CloudTunnelManager.startTunnel(profile)
+                    isConnectingTunnel = false
+                    cloudRes.onSuccess { localPort ->
+                        VpsProxyController.applySocksProxy(localPort) { success ->
+                            if (success) {
+                                isSocksActive = true
+                                isTunnelActive = true
+                                activeRouteName = "☁️ Codespace Cloud"
+                                val target = if (currentUrl.isBlank() || currentUrl.startsWith("http://127.0.0.1") || currentUrl.contains(":3000")) {
+                                    if (searchEngineUrl.isNotBlank()) searchEngineUrl else "https://duckduckgo.com"
+                                } else {
+                                    currentUrl
+                                }
+                                currentUrl = target
+                                omnibarText = target
+                                engineController?.loadUrl(target)
+                            } else {
+                                isSocksActive = false
+                                isTunnelActive = false
+                                connectionError = "🛡️ Kill-Switch Activo: Fallo al aplicar el proxy seguro en el dispositivo. Conexión bloqueada para proteger tu IP."
+                            }
+                        }
+                    }.onFailure { err ->
+                        isSocksActive = false
+                        isTunnelActive = false
+                        connectionError = "🛡️ Escudo Anti-Fugas Activo: No se pudo conectar al servidor Cloud (${err.message}). Tráfico bloqueado por seguridad."
+                    }
+                    return@launch
                 } else if (SshTunnelManager.isSocksProxyActive()) {
                     isSocksActive = true
                     isTunnelActive = true

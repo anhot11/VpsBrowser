@@ -113,8 +113,11 @@ fun FirefoxTurboBrowserView(
                 settings.userAgentString = if (enabled) {
                     "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"
                 } else {
-                    "Mozilla/5.0 (Android 14; Mobile; rv:130.0) Gecko/130.0 Firefox/130.0"
+                    "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
                 }
+                settings.useWideViewPort = enabled
+                settings.loadWithOverviewMode = enabled
+                webViewRef?.reload()
             }
 
             override fun injectTurboOptimizations() {
@@ -246,15 +249,15 @@ fun FirefoxTurboBrowserView(
                     domStorageEnabled = true
                     databaseEnabled = true
                     mediaPlaybackRequiresUserGesture = false
-                    useWideViewPort = true
-                    loadWithOverviewMode = true
+                    useWideViewPort = false
+                    loadWithOverviewMode = false
                     setSupportZoom(true)
                     builtInZoomControls = true
                     displayZoomControls = false
                     allowFileAccess = true
                     allowContentAccess = true
                     cacheMode = WebSettings.LOAD_DEFAULT
-                    userAgentString = "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"
+                    userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
                 }
 
                 webChromeClient = object : WebChromeClient() {
@@ -271,6 +274,43 @@ fun FirefoxTurboBrowserView(
                 }
 
                 webViewClient = object : WebViewClient() {
+                    override fun shouldInterceptRequest(
+                        view: WebView?,
+                        request: WebResourceRequest?
+                    ): WebResourceResponse? {
+                        val reqUri = request?.url ?: return null
+                        val scheme = reqUri.scheme?.lowercase() ?: ""
+                        if (scheme != "http" && scheme != "https") {
+                            return null
+                        }
+
+                        val reqHost = reqUri.host?.lowercase() ?: ""
+                        val isAllowedCloudStream = (profile.cloudflareUrl.isNotBlank() && profile.cloudflareUrl.contains(reqHost)) ||
+                                reqHost == "127.0.0.1" || reqHost == "localhost"
+
+                        // HARDWARE ZERO-LEAK KILL-SWITCH:
+                        // If proxy is not active and this is an external web request, DROP IT!
+                        if (!isAllowedCloudStream && !VpsProxyController.isProxyActive()) {
+                            android.util.Log.e("VPS_KILL_SWITCH", "🛡️ BLOQUEADO POR KILL-SWITCH (Turbo): $reqUri")
+                            val blockedHtml = """
+                                <!DOCTYPE html>
+                                <html>
+                                <body style="background:#0d1117;color:#f85149;display:flex;flex-direction:column;align-items:center;justify-content:center;height:90vh;font-family:sans-serif;text-align:center;padding:24px;">
+                                    <h2>🛡️ Escudo Anti-Fugas Activo (Kill-Switch)</h2>
+                                    <p style="color:#8b949e;font-size:14px;">Conexión directa bloqueada. El tráfico no puede salir directamente desde tu IP sin túnel seguro.</p>
+                                </body>
+                                </html>
+                            """.trimIndent()
+                            return WebResourceResponse(
+                                "text/html",
+                                "UTF-8",
+                                java.io.ByteArrayInputStream(blockedHtml.toByteArray(Charsets.UTF_8))
+                            )
+                        }
+
+                        return super.shouldInterceptRequest(view, request)
+                    }
+
                     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                         url?.let {
                             currentUrl = it

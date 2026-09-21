@@ -2,28 +2,19 @@
   "name": "VPS Browser Cloud",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu-22.04",
   "features": {
-    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
-      "version": "latest",
-      "moby": true
-    },
     "ghcr.io/devcontainers/features/github-cli:1": {
       "version": "latest"
     }
   },
-  "forwardPorts": [3000, 8080],
+  "forwardPorts": [3000],
   "portsAttributes": {
     "3000": {
-      "label": "VPS Browser Desktop UI",
-      "onAutoForward": "silent",
-      "visibility": "public"
-    },
-    "8080": {
-      "label": "VPS Browser Mobile Proxy",
+      "label": "VPS Browser Cloud Bridge",
       "onAutoForward": "silent",
       "visibility": "public"
     }
   },
-  "postCreateCommand": "nohup bash server/codespace_startup.sh >/tmp/startup.log 2>&1 &",
-  "postStartCommand": "nohup bash server/codespace_startup.sh >/tmp/startup.log 2>&1 &",
+  "postCreateCommand": "bash server/codespace_startup.sh",
+  "postStartCommand": "bash server/codespace_startup.sh",
   "postAttachCommand": "gh codespace ports visibility 3000:public -c $CODESPACE_NAME 2>/dev/null || true"
 }

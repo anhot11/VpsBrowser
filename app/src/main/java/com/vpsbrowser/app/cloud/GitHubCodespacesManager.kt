@@ -290,50 +290,34 @@ object GitHubCodespacesManager {
 
             val portUrl = "https://$clusterId.rel.tunnels.api.visualstudio.com/tunnels/$tunnelId/ports/$port?api-version=2023-09-27-preview"
 
-            // 2. Obtener la configuración actual del puerto en Dev Tunnels
-            val getPortReq = Request.Builder()
-                .url(portUrl)
-                .addHeader("Authorization", "Tunnel $manageToken")
-                .addHeader("Content-Type", "application/json")
-                .get()
-                .build()
+            // 2. Eliminar definición previa del puerto para asegurar reseteo limpio de permisos
+            try {
+                val delReq = Request.Builder()
+                    .url(portUrl)
+                    .addHeader("Authorization", "Tunnel $manageToken")
+                    .delete()
+                    .build()
+                httpClient.newCall(delReq).execute().close()
+            } catch (_: Exception) {}
 
-            val portJson = httpClient.newCall(getPortReq).execute().use { resp ->
-                val body = resp.body?.string().orEmpty()
-                if (resp.isSuccessful && body.isNotBlank()) {
-                    JSONObject(body)
-                } else {
-                    // Si el puerto no existe en el túnel aún, crearlo con valores por defecto
-                    JSONObject().apply {
-                        put("clusterId", clusterId)
-                        put("tunnelId", tunnelId)
-                        put("portNumber", port)
-                        put("protocol", "http")
+            // 3. Crear definición de puerto con visibilidad pública Anonymous
+            val portJson = JSONObject().apply {
+                put("portNumber", port)
+                put("labels", JSONArray().put("UserForwardedPort"))
+                put("protocol", "http")
+                if (visibility.equals("public", ignoreCase = true)) {
+                    val entries = JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("type", "Anonymous")
+                            put("subjects", JSONArray())
+                            put("scopes", JSONArray().put("connect"))
+                        })
                     }
+                    put("accessControl", JSONObject().apply {
+                        put("entries", entries)
+                    })
                 }
             }
-
-            // 3. Modificar accessControl para permitir Anonymous (Público)
-            val entries = JSONArray()
-            entries.put(JSONObject().apply {
-                put("type", "Organizations")
-                put("provider", "github")
-                put("isInherited", true)
-                put("isDeny", true)
-                put("subjects", JSONArray().put("1"))
-                put("scopes", JSONArray().put("connect"))
-            })
-            if (visibility.equals("public", ignoreCase = true)) {
-                entries.put(JSONObject().apply {
-                    put("type", "Anonymous")
-                    put("subjects", JSONArray())
-                    put("scopes", JSONArray().put("connect"))
-                })
-            }
-
-            portJson.put("accessControl", JSONObject().apply {
-                put("entries", entries)
-            })
 
             val putReq = Request.Builder()
                 .url(portUrl)
@@ -343,7 +327,7 @@ object GitHubCodespacesManager {
                 .build()
 
             httpClient.newCall(putReq).execute().use { resp ->
-                if (resp.isSuccessful) {
+                if (resp.isSuccessful || resp.code == 201) {
                     Result.success(Unit)
                 } else {
                     val errBody = resp.body?.string().orEmpty()
@@ -516,16 +500,16 @@ object GitHubCodespacesManager {
             }
             setPortVisibility(token, codespaceName, 8080, "public")
 
-            onProgress("Esperando arranque de Firefox remoto en la nube...", 85)
-            onLog(">>> Verificando disponibilidad de la interfaz web en $directWebUrl...")
+            onProgress("Esperando arranque de túnel Cloud seguro...", 85)
+            onLog(">>> Verificando disponibilidad del túnel en $directWebUrl...")
 
             var isWebReady = false
             val probeClient = httpClient.newBuilder()
                 .followRedirects(true)
-                .callTimeout(java.time.Duration.ofSeconds(6))
+                .callTimeout(java.time.Duration.ofSeconds(5))
                 .build()
 
-            val maxProbes = 30 // 30 sondeos * 3s = 90 segundos
+            val maxProbes = 15 // 15 sondeos * 2s = 30 segundos max (con cloud_bridge.py responde casi de inmediato)
             for (probe in 1..maxProbes) {
                 try {
                     val probeReq = Request.Builder()
@@ -537,28 +521,28 @@ object GitHubCodespacesManager {
                     probeResp.close()
 
                     val pct = 85 + (probe * 14 / maxProbes)
-                    onProgress("Iniciando contenedor web Firefox ($probe/$maxProbes)...", pct)
+                    onProgress("Iniciando túnel seguro Cloud ($probe/$maxProbes)...", pct)
 
                     if (code in 200..399) {
                         isWebReady = true
-                        onLog(">>> ✓ Interfaz web Firefox lista y respondiendo exitosamente (HTTP $code).")
+                        onLog(">>> ✓ Servidor Cloud listo y respondiendo exitosamente (HTTP $code).")
                         break
                     } else if (code == 401 || code == 404) {
                         if (probe % 3 == 0) {
                             setPortVisibility(token, codespaceName, 3000, "public")
                         }
-                        onLog(">>> Esperando servidor Firefox en Cloud (Intento $probe/$maxProbes): HTTP $code")
+                        onLog(">>> Esperando servidor en Cloud (Intento $probe/$maxProbes): HTTP $code")
                     } else {
-                        onLog(">>> Esperando servidor Firefox en Cloud (Intento $probe/$maxProbes): HTTP $code")
+                        onLog(">>> Esperando servidor en Cloud (Intento $probe/$maxProbes): HTTP $code")
                     }
                 } catch (e: Exception) {
                     onLog(">>> Esperando respuesta del túnel Cloud ($probe/$maxProbes): ${e.message ?: "Conectando..."}")
                 }
-                delay(3000)
+                delay(2000)
             }
 
             if (!isWebReady) {
-                onLog(">>> Aviso: La máquina Cloud está encendida, pero Firefox todavía se encuentra cargando en segundo plano.")
+                onLog(">>> Aviso: La máquina Cloud está encendida. Conectando al túnel seguro...")
             }
 
             onProgress("¡Navegador Cloud listo para usar!", 100)
