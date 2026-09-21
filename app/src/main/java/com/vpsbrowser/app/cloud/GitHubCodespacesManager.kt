@@ -321,8 +321,9 @@ object GitHubCodespacesManager {
             // Buscar un codespace asociado a este repositorio o con nombre que contenga vps
             var targetCodespace = existingList.firstOrNull {
                 it.repositoryFullName.equals(DEFAULT_REPO, ignoreCase = true) ||
-                it.repositoryFullName.endsWith("/VpsBrowser", ignoreCase = true)
-            }
+                it.repositoryFullName.endsWith("/VpsBrowser", ignoreCase = true) ||
+                it.name.contains("vps", ignoreCase = true)
+            } ?: existingList.firstOrNull()
 
             var codespaceName = ""
 
@@ -355,10 +356,11 @@ object GitHubCodespacesManager {
             }
 
             // Esperar a que el Codespace esté "Available"
-            onProgress("Iniciando contenedor Firefox en la nube...", 50)
+            onProgress("Esperando arranque de la máquina Cloud...", 50)
             var attempts = 0
-            val maxAttempts = 60 // 60 intentos * 3s = 180 segundos max
+            val maxAttempts = 120 // 120 intentos * 3s = 360 segundos (6 minutos max para primer aprovisionamiento)
             var isAvailable = false
+            var lastState = "Unknown"
 
             while (attempts < maxAttempts) {
                 delay(3000)
@@ -366,12 +368,22 @@ object GitHubCodespacesManager {
                 val pollRes = getCodespace(token, codespaceName)
                 if (pollRes.isSuccess) {
                     val info = pollRes.getOrThrow()
-                    val currentState = info.state
-                    val currentPct = (50 + (attempts * 0.6f)).toInt().coerceAtMost(85)
-                    onProgress("Preparando navegador Cloud ($currentState)...", currentPct)
-                    onLog(">>> Estado del servidor Cloud: $currentState (Intento $attempts/$maxAttempts)")
+                    lastState = info.state
+                    val elapsedSec = attempts * 3
+                    val currentPct = (45 + (attempts * 0.35f)).toInt().coerceAtMost(88)
 
-                    if (currentState.equals("Available", ignoreCase = true)) {
+                    val statusMsg = when (lastState.lowercase()) {
+                        "provisioning" -> "Aprovisionando máquina Azure ($elapsedSec s)..."
+                        "starting" -> "Arrancando máquina virtual ($elapsedSec s)..."
+                        "rebuilding" -> "Reconstruyendo entorno ($elapsedSec s)..."
+                        "available" -> "¡Máquina lista! Enrutando navegador..."
+                        else -> "Estado Cloud: $lastState ($elapsedSec s)..."
+                    }
+
+                    onProgress(statusMsg, currentPct)
+                    onLog(">>> Estado del servidor Cloud: $lastState (Intento $attempts/$maxAttempts - ${elapsedSec}s)")
+
+                    if (lastState.equals("Available", ignoreCase = true)) {
                         isAvailable = true
                         break
                     }
@@ -379,12 +391,16 @@ object GitHubCodespacesManager {
             }
 
             if (!isAvailable) {
-                onLog(">>> El entorno Cloud tardó más de lo previsto en arrancar.")
+                onLog(">>> El aprovisionamiento inicial tardó más del tiempo límite (Estado: $lastState).")
+                return@withContext Result.failure(
+                    Exception("La máquina Cloud aún se está inicializando en GitHub ($lastState). Como ya quedó creada en tu cuenta ($codespaceName), pulsa nuevamente 'Iniciar Navegador Cloud' para conectar directamente.")
+                )
             }
 
             onProgress("Configurando puerto seguro HTTPS...", 90)
             onLog(">>> Ajustando visibilidad pública del puerto 3000 y 8080...")
 
+            delay(2000)
             // Configurar puertos como públicos para permitir WebView
             setPortVisibility(token, codespaceName, 3000, "public")
             setPortVisibility(token, codespaceName, 8080, "public")
